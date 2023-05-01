@@ -1,0 +1,8 @@
+(executable
+  (name chapter02)
+  (modules chapter02)
+  (libraries utils))
+
+(library
+  (name utils)
+  (modules utils))
