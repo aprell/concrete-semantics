@@ -3,6 +3,11 @@
   (modules chapter02)
   (libraries utils))
 
+(executable
+  (name chapter03)
+  (modules chapter03)
+  (libraries utils))
+
 (library
   (name utils)
   (modules utils))

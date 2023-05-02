@@ -1,5 +1,7 @@
+CHAPTERS := 2 3
+
 test:
-	@./test.sh 2
+	@./test.sh $(CHAPTERS)
 
 clean:
 	dune clean
