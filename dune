@@ -11,3 +11,15 @@
 (library
   (name utils)
   (modules utils))
+
+;; IMP language
+
+(ocamllex
+  (modules lexer))
+
+(menhir
+  (modules parser))
+
+(library
+  (name imp)
+  (modules ast lexer parser parse))
