@@ -23,3 +23,8 @@
 (library
   (name imp)
   (modules ast lexer parser parse))
+
+(tests
+  (names test_parse)
+  (modules test_parse)
+  (libraries imp ounit2))
