@@ -1,3 +1,4 @@
+open State
 open Utils
 
 type aexpr =
@@ -5,19 +6,6 @@ type aexpr =
   | Var of name
   | Add of aexpr * aexpr
   | Let of name * aexpr * aexpr
-
-and name = string
-
-type state = name -> int
-
-let bind n v s =
-  fun x -> if x = n then v else s x
-
-let assign ns_vs =
-  List.fold_left
-    (fun s (n, v) -> bind n v s)
-    (fun _ -> 0)
-    ns_vs
 
 let rec aeval (e : aexpr) (s : state) : int =
   match e with

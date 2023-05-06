@@ -1,13 +1,11 @@
 (* IMP abstract syntax *)
 
+open State
+
 type aexpr =
   | Int of int
   | Var of name
   | Add of aexpr * aexpr
-
-and name = string
-
-type state = name -> int
 
 type bexpr =
   | Bool of bool

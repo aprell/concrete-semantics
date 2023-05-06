@@ -1,15 +1,7 @@
 open Imp.Ast
 open Imp.Parse
+open State
 open Utils
-
-let bind n v s =
-  fun x -> if x = n then v else s x
-
-let assign ns_vs =
-  List.fold_left
-    (fun s (n, v) -> bind n v s)
-    (fun _ -> 0)
-    ns_vs
 
 let rec aeval (e : aexpr) (s : state) : int =
   match e with
