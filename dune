@@ -8,6 +8,11 @@
   (modules chapter03)
   (libraries utils))
 
+(executable
+  (name chapter07)
+  (modules chapter07)
+  (libraries imp utils))
+
 (library
   (name utils)
   (modules utils))
@@ -22,7 +27,7 @@
 
 (library
   (name imp)
-  (modules ast lexer parser parse))
+  (modules ast lexer parser parse examples))
 
 (tests
   (names test_parse)
