@@ -1,20 +1,8 @@
 open Imp.Ast
+open Imp.Eval
 open Imp.Parse
 open State
 open Utils
-
-let rec aeval (e : aexpr) (s : state) : int =
-  match e with
-  | Int n -> n
-  | Var x -> s x
-  | Add (e1, e2) -> aeval e1 s + aeval e2 s
-
-let rec beval (e : bexpr) (s : state) : bool =
-  match e with
-  | Bool b -> b
-  | Not e -> not (beval e s)
-  | And (e1, e2) -> beval e1 s && beval e2 s
-  | Less (e1, e2) -> aeval e1 s < aeval e2 s
 
 let rec big_step (c : command) (s : state) : state =
   match c with
