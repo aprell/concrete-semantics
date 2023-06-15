@@ -13,6 +13,11 @@
   (modules chapter07)
   (libraries imp utils))
 
+(executable
+  (name chapter08)
+  (modules chapter08)
+  (libraries imp utils))
+
 (library
   (name state)
   (modules state))

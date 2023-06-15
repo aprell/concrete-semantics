@@ -1,4 +1,4 @@
-CHAPTERS := 2 3 7
+CHAPTERS := 2 3 7 8
 
 test:
 	@./test.sh $(CHAPTERS)
