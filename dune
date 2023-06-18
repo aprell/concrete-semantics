@@ -18,6 +18,11 @@
   (modules chapter08)
   (libraries imp utils))
 
+(executable
+  (name chapter09)
+  (modules chapter09)
+  (libraries imp utils))
+
 (library
   (name state)
   (modules state))
@@ -36,7 +41,7 @@
 
 (library
   (name imp)
-  (modules ast eval lexer parser parse examples)
+  (modules ast eval type lexer parser parse examples)
   (libraries state))
 
 (tests

@@ -12,3 +12,21 @@ let assign ns_vs =
     (fun s (n, v) -> bind n v s)
     empty
     ns_vs
+
+module Typed = struct
+  type value =
+    | Int of int
+    | Real of float
+
+  type state = name -> value
+
+  let empty = fun _ -> Int 0
+
+  let bind = bind
+
+  let assign ns_vs =
+    List.fold_left
+      (fun s (n, v) -> bind n v s)
+      empty
+      ns_vs
+end
