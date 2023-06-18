@@ -12,7 +12,8 @@ let test_well_typed () =
 let test_fib_well_typed () =
   let fib = Imp.(parse Examples.fib |> Ast.convert_command) in
   let env = assign (List.map (fun x -> (x, Int)) ["f"; "n"; "i"; "t0"; "t1"; "t2"]) in
-  assert (is_well_typed_command fib env)
+  assert (is_well_typed_command fib env);
+  assert (not (is_well_typed_command fib (bind "t2" Real env)))
 
 let () =
   test_well_typed ();

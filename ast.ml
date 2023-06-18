@@ -20,8 +20,6 @@ type command =
   | While of bexpr * command
   | Skip
 
-(* Typed IMP *)
-
 module Typed = struct
   type aexpr =
     | Int of int
