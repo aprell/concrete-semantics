@@ -4,6 +4,10 @@ open Imp.Parse
 open State
 open Utils
 
+let fib = parse Imp.Examples.fib
+
+let sum = parse Imp.Examples.sum
+
 let rec big_step (c : command) (s : state) : state =
   match c with
   | Assign (x, e) -> bind x (aeval e s) s
@@ -14,14 +18,13 @@ let rec big_step (c : command) (s : state) : state =
   | While (_, _) (* when not (beval e s) *) -> s
   | Skip -> s
 
-let test_fib_big_step () =
-  let fib_ast = parse Imp.Examples.fib in
-  let fib n =
-    let s = assign [("n", n)] in
-    big_step fib_ast s "f"
-  in
+let test_big_step () =
+  let fib n = big_step fib (assign [("n", n)]) "f" in
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
-  |> List.iteri (fun i n -> assert (fib i == n))
+  |> List.iteri (fun i n -> assert (fib i == n));
+  let sum n = big_step sum (assign [("n", n)]) "s" in
+  [0; 1; 3; 6; 10; 15; 21; 28; 36; 45; 55]
+  |> List.iteri (fun i n -> assert (sum i == n))
 
 let equiv_state (s : state) (s' : state) : bool =
   equivalent s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
@@ -58,14 +61,13 @@ let rec small_steps (cs : config) : state =
   let (_, s') as cs' = small_step cs in
   if not (final cs') then small_steps cs' else s'
 
-let test_fib_small_step () =
-  let fib_ast = parse Imp.Examples.fib in
-  let fib n =
-    let s = assign [("n", n)] in
-    small_steps (fib_ast, s) "f"
-  in
+let test_small_step () =
+  let fib n = small_steps (fib, assign [("n", n)]) "f" in
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
-  |> List.iteri (fun i n -> assert (fib i == n))
+  |> List.iteri (fun i n -> assert (fib i == n));
+  let sum n = small_steps (sum, assign [("n", n)]) "s" in
+  [0; 1; 3; 6; 10; 15; 21; 28; 36; 45; 55]
+  |> List.iteri (fun i n -> assert (sum i == n))
 
 (* Equivalence of big-step and small-step semantics *)
 let equiv_semantics ((c, s) : config) : bool =
@@ -82,7 +84,7 @@ let test_equiv_semantics () =
   assert_property p s ~name:"equiv_semantics"
 
 let () =
-  test_fib_big_step ();
+  test_big_step ();
   test_equiv_command ();
-  test_fib_small_step ();
+  test_small_step ();
   test_equiv_semantics ();
