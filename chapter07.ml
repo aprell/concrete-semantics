@@ -23,11 +23,8 @@ let test_fib_big_step () =
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
   |> List.iteri (fun i n -> assert (fib i == n))
 
-let equiv_state_ (s : state) (s' : state) (xs : name list) : bool =
-  List.for_all (fun x -> s x = s' x) xs
-
 let equiv_state (s : state) (s' : state) : bool =
-  equiv_state_ s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
+  equivalent s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
 
 (* Semantic equivalence *)
 let equiv_command (c : command) (c' : command) (s : state) : bool =

@@ -120,11 +120,8 @@ let rec ccomp (c : command) : instr list =
     ce @ cc @ [Jump (-List.(length ce + length cc + 1))]
   | Skip -> []
 
-let equiv_state_ (s : state) (s' : state) (xs : name list) : bool =
-  List.for_all (fun x -> s x = s' x) xs
-
 let equiv_state (s : state) (s' : state) : bool =
-  equiv_state_ s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
+  equivalent s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
 
 let ccomp_correct (c : command) (s : state) (t : stack) : bool =
   let is = ccomp c in
