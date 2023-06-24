@@ -4,10 +4,6 @@ open Imp.Parse
 open State
 open Utils
 
-let fib = parse Imp.Examples.fib
-
-let sum = parse Imp.Examples.sum
-
 let rec big_step (c : command) (s : state) : state =
   match c with
   | Assign (x, e) -> bind x (aeval e s) s
@@ -19,10 +15,10 @@ let rec big_step (c : command) (s : state) : state =
   | Skip -> s
 
 let test_big_step () =
-  let fib n = big_step fib (assign [("n", n)]) "f" in
+  let fib n = big_step Imp.Examples.fib (assign [("n", n)]) "f" in
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
   |> List.iteri (fun i n -> assert (fib i == n));
-  let sum n = big_step sum (assign [("n", n)]) "s" in
+  let sum n = big_step Imp.Examples.sum (assign [("n", n)]) "s" in
   [0; 1; 3; 6; 10; 15; 21; 28; 36; 45; 55]
   |> List.iteri (fun i n -> assert (sum i == n))
 
@@ -62,10 +58,10 @@ let rec small_steps (cs : config) : state =
   if not (final cs') then small_steps cs' else s'
 
 let test_small_step () =
-  let fib n = small_steps (fib, assign [("n", n)]) "f" in
+  let fib n = small_steps (Imp.Examples.fib, assign [("n", n)]) "f" in
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
   |> List.iteri (fun i n -> assert (fib i == n));
-  let sum n = small_steps (sum, assign [("n", n)]) "s" in
+  let sum n = small_steps (Imp.Examples.sum, assign [("n", n)]) "s" in
   [0; 1; 3; 6; 10; 15; 21; 28; 36; 45; 55]
   |> List.iteri (fun i n -> assert (sum i == n))
 

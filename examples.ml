@@ -1,4 +1,6 @@
-let fib = {|
+open Parse
+
+let fib = parse {|
   t0 := 0;
   t1 := 1;
   if n < 2 {
@@ -15,7 +17,7 @@ let fib = {|
   }
 |}
 
-let sum = {|
+let sum = parse {|
   s := 0;
   i := 1;
   while i < n + 1 {
