@@ -1,6 +1,7 @@
-open Imp.Ast
-open Imp.Eval
-open Imp.Parse
+open Imp
+open Ast
+open Eval
+open Parse
 open State
 open Utils
 
@@ -15,29 +16,27 @@ let rec big_step (c : command) (s : state) : state =
   | Skip -> s
 
 let test_big_step () =
-  let fib n = big_step Imp.Examples.fib (assign [("n", n)]) "f" in
+  let fib n = big_step Examples.fib (assign [("n", n)]) "f" in
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
   |> List.iteri (fun i n -> assert (fib i == n));
-  let sum n = big_step Imp.Examples.sum (assign [("n", n)]) "s" in
+  let sum n = big_step Examples.sum (assign [("n", n)]) "s" in
   [0; 1; 3; 6; 10; 15; 21; 28; 36; 45; 55]
   |> List.iteri (fun i n -> assert (sum i == n))
 
-let equiv_state (s : state) (s' : state) : bool =
-  equivalent s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
-
 (* Semantic equivalence *)
-let equiv_command (c : command) (c' : command) (s : state) : bool =
-  equiv_state (big_step c s) (big_step c' s)
+let equiv_command (c : command) (c' : command) (s : state) (xs : name list) : bool =
+  equivalent (big_step c s) (big_step c' s) xs
 
 let test_equiv_command () =
   (* Lemma 7.3 *)
   let c = "while i < 10 { x := x + y; i := i + 1 }" in
   let c' = "if i < 10 { x := x + y; i := i + 1; " ^ c ^ "}" in
-  [ assign [("i",  0)];
-    assign [("i",  2); ("x", 1)];
+  let p = fun s -> equiv_command (parse c) (parse c') s ["i"; "x"; "y"] in
+  [ assign [("i",  0); ("x", 0); ("y", 0)];
+    assign [("i",  2); ("x", 1); ("y", 0)];
     assign [("i",  5); ("x", 2); ("y", 3)];
     assign [("i", 10); ("x", 3); ("y", 4)];
-  ] |> assert_property (equiv_command (parse c) (parse c')) ~name:"equiv_command"
+  ] |> assert_property p ~name:"equiv_command"
 
 type config = command * state
 
@@ -58,26 +57,25 @@ let rec small_steps (cs : config) : state =
   if not (final cs') then small_steps cs' else s'
 
 let test_small_step () =
-  let fib n = small_steps (Imp.Examples.fib, assign [("n", n)]) "f" in
+  let fib n = small_steps (Examples.fib, assign [("n", n)]) "f" in
   [0; 1; 1; 2; 3; 5; 8; 13; 21; 34; 55]
   |> List.iteri (fun i n -> assert (fib i == n));
-  let sum n = small_steps (Imp.Examples.sum, assign [("n", n)]) "s" in
+  let sum n = small_steps (Examples.sum, assign [("n", n)]) "s" in
   [0; 1; 3; 6; 10; 15; 21; 28; 36; 45; 55]
   |> List.iteri (fun i n -> assert (sum i == n))
 
 (* Equivalence of big-step and small-step semantics *)
-let equiv_semantics ((c, s) : config) : bool =
-  equiv_state (big_step c s) (small_steps (c, s))
+let equiv_semantics ((c, s) : config) (xs : name list) : bool =
+  equivalent (big_step c s) (small_steps (c, s)) xs
 
 let test_equiv_semantics () =
-  let c = parse "while i < 10 { x := x + y; i := i + 1 }" in
-  let s = [ assign [("i",  0)];
-            assign [("i",  2); ("x", 1)];
-            assign [("i",  5); ("x", 2); ("y", 3)];
-            assign [("i", 10); ("x", 3); ("y", 4)]; ]
-  in
-  let p = fun s -> equiv_semantics (c, s) in
-  assert_property p s ~name:"equiv_semantics"
+  let c = "while i < 10 { x := x + y; i := i + 1 }" in
+  let p = fun s -> equiv_semantics (parse c, s) ["i"; "x"; "y"] in
+  [ assign [("i",  0); ("x", 0); ("y", 0)];
+    assign [("i",  2); ("x", 1); ("y", 0)];
+    assign [("i",  5); ("x", 2); ("y", 3)];
+    assign [("i", 10); ("x", 3); ("y", 4)];
+  ] |> assert_property p ~name:"equiv_semantics"
 
 let () =
   test_big_step ();

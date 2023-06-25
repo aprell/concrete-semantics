@@ -1,6 +1,7 @@
-open Imp.Ast
-open Imp.Eval
-open Imp.Parse
+open Imp
+open Ast
+open Eval
+open Parse
 open State
 open Utils
 
@@ -120,18 +121,15 @@ let rec ccomp (c : command) : instr list =
     ce @ cc @ [Jump (-List.(length ce + length cc + 1))]
   | Skip -> []
 
-let equiv_state (s : state) (s' : state) : bool =
-  equivalent s s' ["a"; "b"; "c"; "i"; "x"; "y"; "z"]
-
-let ccomp_correct (c : command) (s : state) (t : stack) : bool =
+let ccomp_correct (c : command) (s : state) (t : stack) (xs : name list) : bool =
   let is = ccomp c in
   let (pc', s', _) = exec is (0, s, t) in
-  pc' = List.length is && equiv_state s' (ceval c s)
+  pc' = List.length is && equivalent s' (ceval c s) xs
 
 let test_ccomp_correct () =
   let c = [parse "while i < 10 { x := x + y; i := i + 1 }"] in
   let s = assign [("i",  0); ("x", 3); ("y", 4)] in
-  let p = fun c -> ccomp_correct c s [] in
+  let p = fun c -> ccomp_correct c s [] ["i"; "x"; "y"] in
   assert_property p c ~name:"ccomp_correct"
 
 let () =
