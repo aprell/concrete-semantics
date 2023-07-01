@@ -25,3 +25,10 @@ let sum = parse {|
     i := i + 1
   }
 |}
+
+module Typed = struct
+  let fib = Ast.convert_command fib
+  let fib_type_env = ["f"; "n"; "i"; "t0"; "t1"; "t2"] |> Type.(assign_all Int)
+  let sum = Ast.convert_command sum
+  let sum_type_env = ["s"; "n"; "i"] |> Type.(assign_all Int)
+end

@@ -28,16 +28,30 @@ module Typed = struct
   open Ast.Typed
   open State.Typed
 
-  let rec aeval (e : aexpr) (s : state) : value option =
+  let rec aeval_opt (e : aexpr) (s : state) : value option =
     match e with
     | Int n -> Some (Int n)
     | Real n -> Some (Real n)
     | Var x -> Some (s x)
     | Add (e1, e2) ->
-      begin match aeval e1 s, aeval e2 s with
+      begin match aeval_opt e1 s, aeval_opt e2 s with
       | Some (Int n), Some (Int m) -> Some (Int (n + m))
       | Some (Real n), Some (Real m) -> Some (Real (n +. m))
       | _ -> None
+      end
+
+  (* Exercise 9.2 *)
+  let rec aeval (e : aexpr) (s : state) : value =
+    match e with
+    | Int n -> Int n
+    | Real n -> Real n
+    | Var x -> s x
+    | Add (e1, e2) ->
+      begin match aeval e1 s, aeval e2 s with
+      | Int n, Int m -> Int (n + m)
+      | Int n, Real m
+      | Real m, Int n -> Real (float_of_int n +. m)
+      | Real n, Real m -> Real (n +. m)
       end
 
   let rec beval (e : bexpr) (s : state) : bool option =
@@ -58,7 +72,7 @@ module Typed = struct
       | None -> None
       end
     | Less (e1, e2) ->
-      begin match aeval e1 s, aeval e2 s with
+      begin match aeval_opt e1 s, aeval_opt e2 s with
       | Some a1, Some a2 -> Some (a1 < a2)
       | _ -> None
       end
@@ -67,7 +81,7 @@ module Typed = struct
   let rec ceval ((c, s) : command * state) : command * state =
     match c with
     | Assign (x, e) ->
-      begin match aeval e s with
+      begin match aeval_opt e s with
       | Some a -> (Skip, bind x a s)
       | None -> failwith "stuck"
       end
