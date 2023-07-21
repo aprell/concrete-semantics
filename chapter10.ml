@@ -59,8 +59,10 @@ let is_def_init (c : command) : bool =
   snd (def_init Vars.empty c)
 
 let test_def_init () =
-  [parse "x := 1; y := 2; z := x + y"]
-  |> assert_property is_def_init ~name:"Definitely initialized"
+  List.map parse [
+    "x := 1; y := 2; z := x + y";
+    "i := 0; while i < 10 { n := i + -1; i := i + 1 }";
+  ] |> assert_property is_def_init ~name:"Definitely initialized"
 
 let dom (s : state) (xs : name list) : Vars.t =
   List.fold_left (fun xs x ->
@@ -144,16 +146,16 @@ let well_init_programs_do_not_go_wrong (c : command) (s : state) (xs : name list
   if ok then big_step c (Some s) |> Option.is_some else true
 
 let test_well_init_programs_do_not_go_wrong () =
-  let c = List.map parse [
+  let p = fun c ->
+    let s = assign [("i", 0)] in
+    let xs = ["i"; "n"; "x"; "y"; "z"] in
+    well_init_programs_do_not_go_wrong c s xs
+  in
+  List.map parse [
     "x := 1; y := 2; z := x + y";
     "if i < 10 { x := 2 } else { x := y }";
     "while i < 10 { n := i + -1; i := i + 1 }";
-  ]
-  in
-  let s = assign [("i", 0)] in
-  let xs = ["i"; "n"; "x"; "y"; "z"] in
-  let p = fun c -> well_init_programs_do_not_go_wrong c s xs in
-  assert_property p c ~name:"Well-initialized programs do not go wrong"
+  ] |> assert_property p ~name:"Well-initialized programs do not go wrong"
   
 (* Exercise 10.1 *)
 let rec ivars (c : command) : Vars.t =
@@ -202,8 +204,11 @@ let exercise_10_1 (xs : Vars.t) (c : command) : bool =
   exercise_10_1_a xs c && exercise_10_1_b xs c
 
 let test_exercise_10_1 () =
-  [parse "x := 1; y := 2; z := x + y"]
-  |> assert_property (exercise_10_1 Vars.empty) ~name:"Exercise 10.1"
+  List.map parse [
+    "x := 1; y := 2; z := x + y";
+    "if i < 10 { x := 2 } else { x := y }";
+    "while i < 10 { n := i + -1; i := i + 1 }";
+  ] |> assert_property (exercise_10_1 Vars.empty) ~name:"Exercise 10.1"
 
 let () =
   test_def_init ();
