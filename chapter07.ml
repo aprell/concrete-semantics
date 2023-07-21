@@ -45,7 +45,7 @@ let final ((c, _) : config) : bool = c = Skip
 let rec small_step ((c, s) : config) : config =
   match c with
   | Assign (x, e) -> (Skip, bind x (aeval e s) s)
-  | Seq (c1, c2) when c1 = Skip -> (c2, s)
+  | Seq (Skip, c2) -> (c2, s)
   | Seq (c1, c2) -> let (c1', s') = small_step (c1, s) in (Seq (c1', c2), s')
   | If (e, c1, _) when beval e s -> (c1, s)
   | If (_, _, c2) (* when not (beval e s) *) -> (c2, s)

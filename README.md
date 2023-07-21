@@ -6,7 +6,8 @@ Andreas reads [Concrete Semantics](http://concrete-semantics.org) *without* Isab
 &emsp;**3**&emsp;[Case Study: IMP Expressions](chapter03.ml)<br>
 &emsp;**7**&emsp;[IMP: A Simple Imperative Language](chapter07.ml)<br>
 &emsp;**8**&emsp;[Compiler](chapter08.ml)<br>
-&emsp;**9**&emsp;[Types](chapter09.ml)
+&emsp;**9**&emsp;[Types](chapter09.ml)<br>
+&emsp;**10**&emsp;[Program Analysis](chapter10.ml)
 
 ## References
 

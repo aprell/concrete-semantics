@@ -14,6 +14,39 @@ let rec beval (e : bexpr) (s : state) : bool =
   | And (e1, e2) -> beval e1 s && beval e2 s
   | Less (e1, e2) -> aeval e1 s < aeval e2 s
 
+let rec aeval_opt (e : aexpr) (s : state) : int option =
+  match e with
+  | Int n -> Some n
+  | Var x -> (try Some (s x) with Failure _ -> None)
+  | Add (e1, e2) ->
+    begin match aeval_opt e1 s, aeval_opt e2 s with
+    | Some n, Some m -> Some (n + m)
+    | _ -> None
+    end
+
+let rec beval_opt (e : bexpr) (s : state) : bool option =
+  match e with
+  | Bool b -> Some b
+  | Not e ->
+    begin match beval_opt e s with
+    | Some b -> Some (not b)
+    | None -> None
+    end
+  | And (e1, e2) ->
+    begin match beval_opt e1 s with
+    | Some b1 ->
+      begin match beval_opt e2 s with
+      | Some b2 -> Some (b1 && b2)
+      | None -> None
+      end
+    | None -> None
+    end
+  | Less (e1, e2) ->
+    begin match aeval_opt e1 s, aeval_opt e2 s with
+    | Some a1, Some a2 -> Some (a1 < a2)
+    | _ -> None
+    end
+
 let rec ceval (c : command) (s : state) : state =
   match c with
   | Assign (x, e) -> bind x (aeval e s) s
@@ -32,7 +65,7 @@ module Typed = struct
     match e with
     | Int n -> Some (Int n)
     | Real n -> Some (Real n)
-    | Var x -> Some (s x)
+    | Var x -> (try Some (s x) with Failure _ -> None)
     | Add (e1, e2) ->
       begin match aeval_opt e1 s, aeval_opt e2 s with
       | Some (Int n), Some (Int m) -> Some (Int (n + m))
