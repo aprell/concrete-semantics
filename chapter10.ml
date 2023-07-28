@@ -188,20 +188,11 @@ let test_ok () =
   [Imp.Examples.fib; Imp.Examples.sum]
   |> assert_property (ok (Vars.singleton "n")) ~name:"Only initialized variables are read"
 
-let exercise_10_1_a (xs : Vars.t) (c : command) : bool =
-  let (xs', ok') = def_init xs c in
-  if ok' then
-    Vars.equal xs' (Vars.union xs (ivars c)) && ok xs c
-  else true
-
-let exercise_10_1_b (xs : Vars.t) (c : command) : bool =
-  if ok xs c then
-    let (xs', ok') = def_init xs c in
-    ok' && Vars.equal xs' (Vars.union xs (ivars c))
-  else true
-
 let exercise_10_1 (xs : Vars.t) (c : command) : bool =
-  exercise_10_1_a xs c && exercise_10_1_b xs c
+  let (xs', ok') = def_init xs c in
+  let eq = Vars.equal xs' (Vars.union xs (ivars c)) in
+  if ok' then eq && ok xs c else true &&
+  if ok xs c then ok' && eq else true
 
 let test_exercise_10_1 () =
   List.map parse [
