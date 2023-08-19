@@ -27,8 +27,8 @@ let sum = parse {|
 |}
 
 module Typed = struct
-  let fib = Ast.convert_command fib
-  let fib_type_env = ["f"; "i"; "n"; "t0"; "t1"; "t2"] |> Type.(assign_all Int)
-  let sum = Ast.convert_command sum
-  let sum_type_env = ["i"; "n"; "s"] |> Type.(assign_all Int)
+  let fib = Ast.convert_command fib,
+            ["f"; "i"; "n"; "t0"; "t1"; "t2"] |> Type.(assign_all Int)
+  let sum = Ast.convert_command sum,
+            ["i"; "n"; "s"] |> Type.(assign_all Int)
 end

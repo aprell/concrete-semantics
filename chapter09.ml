@@ -12,12 +12,12 @@ let test_well_typed () =
   assert Type.(not (g |- c2))
 
 let test_fib_well_typed () =
-  let fib, g = Examples.Typed.(fib, fib_type_env) in
+  let fib, g = Examples.Typed.fib in
   assert Type.(g |- fib);
   assert Type.(not (bind "t2" Real g |- fib))
 
 let test_sum_well_typed () =
-  let sum, g = Examples.Typed.(sum, sum_type_env) in
+  let sum, g = Examples.Typed.sum in
   assert Type.(g |- sum);
   assert Type.(not (bind "n" Real g |- sum))
 
@@ -69,10 +69,8 @@ let well_typed_programs_do_not_get_stuck
   let _ = steps (c, s) in true
 
 let test_well_typed_programs_do_not_get_stuck () =
-  let c1, s1 = Examples.Typed.fib, Typed.(assign [("n", Int 10)]) in
-  let c2, s2 = Examples.Typed.sum, Typed.(assign [("n", Int 100)]) in
-  let g1 = Examples.Typed.fib_type_env in
-  let g2 = Examples.Typed.sum_type_env in
+  let (c1, g1), s1 = Examples.Typed.fib, Typed.(assign [("n", Int 10)]) in
+  let (c2, g2), s2 = Examples.Typed.sum, Typed.(assign [("n", Int 100)]) in
   let p = fun (c, s, g) -> well_typed_programs_do_not_get_stuck c s g ["n"] in
   [(c1, s1, g1); (c1, s1, Type.(bind "f" Real g1)); (c2, s2, g2); (c2, s2, Type.(bind "s" Real g2))]
   |> assert_property p ~name:"Well-typed programs do not get stuck"
