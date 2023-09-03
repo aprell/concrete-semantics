@@ -276,10 +276,9 @@ let merge (t1 : const) (t2 : const) : const =
   fun x -> if lookup x t1 = lookup x t2 then lookup x t1 else None
 
 let restrict (t : const) (xs : Vars.t) ?(complement = false) : const =
-  if not complement then
-    fun x -> if Vars.mem x xs then lookup x t else None
-  else
-    fun x -> if Vars.mem x xs then None else lookup x t
+  if not complement
+  then fun x -> if Vars.mem x xs then lookup x t else None
+  else fun x -> if Vars.mem x xs then None else lookup x t
 
 let rec defs (c : command) (t : const) : const =
   match c with
@@ -303,8 +302,9 @@ let rec fold (c : command) (t : const) : command =
 
 let test_fold () =
   let c = parse "x := 42 + -5; y := x + x" in
-  match fold c empty with
-  | Seq (Assign ("x", Int 37), Assign ("y", Int 74)) -> ()
+  let c' = fold c empty in
+  match unparse c' with
+  | "x := 37; y := 74" -> ()
   | _ -> failwith "test_fold"
 
 let fold_correct (c : command) (t : const) (s : state) (xs : name list) : bool =
@@ -337,8 +337,9 @@ let rec fold_dce (c : command) (t : const) : command =
 
 let test_fold_dce () =
   let c = parse "x := 42 + -5; y := x + x; if x < y { z := x + y }" in
-  match fold_dce c empty with
-  | Seq (Seq (Assign ("x", Int 37), Assign ("y", Int 74)), Assign ("z", Int 111)) -> ()
+  let c' = fold_dce c empty in
+  match unparse c' with
+  | "x := 37; y := 74; z := 111" -> ()
   | _ -> failwith "test_fold_dce"
 
 let fold_dce_correct (c : command) (t : const) (s : state) (xs : name list) : bool =
@@ -358,5 +359,7 @@ let () =
   test_only_ivars_are_read ();
   test_exercise_10_1 ();
   test_afold_correct ();
+  test_fold ();
   test_fold_correct ();
+  test_fold_dce ();
   test_fold_dce_correct ();

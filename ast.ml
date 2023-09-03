@@ -20,6 +20,24 @@ type command =
   | While of bexpr * command
   | Skip
 
+let rec pp_aexpr = function
+  | Int n -> string_of_int n
+  | Var x -> x
+  | Add (e1, e2) -> pp_aexpr e1 ^ " + " ^ pp_aexpr e2
+
+let rec pp_bexpr = function
+  | Bool b -> string_of_bool b
+  | Not e -> "!(" ^ pp_bexpr e ^ ")"
+  | And (e1, e2) -> pp_bexpr e1 ^ " && " ^ pp_bexpr e2
+  | Less (e1, e2) -> pp_aexpr e1 ^ " < " ^ pp_aexpr e2
+
+let rec pp_command = function
+  | Assign (x, e) -> x ^ " := " ^ pp_aexpr e
+  | Seq (c1, c2) -> pp_command c1 ^ "; " ^ pp_command c2
+  | If (e, c1, c2) -> "if " ^ pp_bexpr e ^ " { " ^ pp_command c1 ^ " } else { " ^ pp_command c2 ^ " }"
+  | While (e, c) -> "while " ^ pp_bexpr e ^ " { " ^ pp_command c ^ " }"
+  | Skip -> "skip"
+
 module Typed = struct
   type aexpr =
     | Int of int
