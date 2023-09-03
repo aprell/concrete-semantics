@@ -303,9 +303,7 @@ let rec fold (c : command) (t : const) : command =
 let test_fold () =
   let c = parse "x := 42 + -5; y := x + x" in
   let c' = fold c empty in
-  match unparse c' with
-  | "x := 37; y := 74" -> ()
-  | _ -> failwith "test_fold"
+  assert_equal (unparse c') "x := 37; y := 74" ~name:"test_fold"
 
 let fold_correct (c : command) (t : const) (s : state) (xs : name list) : bool =
   if approx t s xs then
@@ -338,9 +336,7 @@ let rec fold_dce (c : command) (t : const) : command =
 let test_fold_dce () =
   let c = parse "x := 42 + -5; y := x + x; if x < y { z := x + y }" in
   let c' = fold_dce c empty in
-  match unparse c' with
-  | "x := 37; y := 74; z := 111" -> ()
-  | _ -> failwith "test_fold_dce"
+  assert_equal (unparse c') "x := 37; y := 74; z := 111" ~name:"test_fold_dce"
 
 let fold_dce_correct (c : command) (t : const) (s : state) (xs : name list) : bool =
   if approx t s xs then
