@@ -348,6 +348,100 @@ let test_fold_dce_correct () =
   let p = fun c -> fold_dce_correct c empty empty [] in
   assert_property p [c] ~name:"fold_dce_correct"
 
+let rec live_before (c : command) ~(live_after : Vars.t) : Vars.t =
+  match c with
+  | Assign (x, e) -> Vars.union (vars_of_aexpr e) (Vars.remove x live_after)
+  | Seq (c1, c2) -> live_before c1 ~live_after:(live_before c2 ~live_after)
+  | If (e, c1, c2) ->
+    let live_before_c1 = live_before c1 ~live_after in
+    let live_before_c2 = live_before c2 ~live_after in
+    Vars.union (vars_of_bexpr e) (Vars.union live_before_c1 live_before_c2)
+  | While (e, c) ->
+    let live_before_c = live_before c ~live_after in
+    Vars.union (vars_of_bexpr e) (Vars.union live_before_c live_after)
+  | Skip -> live_after
+
+let test_liveness () =
+  let c = parse "x := y; x := 0; y := 1" in
+  let l = live_before c ~live_after:(Vars.of_list ["x"; "y"]) in
+  assert_equal (Vars.elements l) ["y"] ~name:"test_liveness"
+
+let rec gen (c : command) : Vars.t =
+  match c with
+  | Assign (_, e) -> vars_of_aexpr e
+  | Seq (c1, c2) -> Vars.union (gen c1) (Vars.diff (gen c2) (kill c1))
+  | If (e, c1, c2) -> Vars.union (vars_of_bexpr e) (Vars.union (gen c1) (gen c2))
+  | While (e, c) -> Vars.union (vars_of_bexpr e) (gen c)
+  | Skip -> Vars.empty
+
+and kill (c : command) : Vars.t =
+  match c with
+  | Assign (x, _) -> Vars.singleton x
+  | Seq (c1, c2) -> Vars.union (kill c1) (kill c2)
+  | If (_, c1, c2) -> Vars.inter (kill c1) (kill c2)
+  | While _ | Skip -> Vars.empty
+
+(* Liveness with gen and kill
+   In general: A c S = gen c ∪ (S - kill c) *)
+let lemma_10_15 (c : command) (xs : Vars.t) : bool =
+  let live_before_1 = live_before c ~live_after:xs in
+  let live_before_2 = Vars.union (gen c) (Vars.diff xs (kill c)) in
+  Vars.equal live_before_1 live_before_2
+
+let test_lemma_10_15 () =
+  let c = parse "x := y; x := 0; y := 1" in
+  let p = fun c -> lemma_10_15 c (Vars.of_list ["x"; "y"]) in
+  assert_property p [c] ~name:"Lemma 10.15"
+
+let on f g xs = equivalent f g (Vars.elements xs)
+
+(* The value of an expression e only depends on the values of the variables in e *)
+let lemma_10_17_1 (e : aexpr) (s1 : state) (s2 : state) : bool =
+  if on s1 (* = *) s2 (* on *) (vars_of_aexpr e) then
+    aeval e s1 = aeval e s2
+  else true
+
+let lemma_10_17_2 (e : bexpr) (s1 : state) (s2 : state) : bool =
+  if on s1 (* = *) s2 (* on *) (vars_of_bexpr e) then
+    beval e s1 = beval e s2
+  else true
+
+let liveness_correct (c : command) (s : state) (t : state) (xs : Vars.t) : bool =
+  let s' = ceval c s in
+  if on s (* = *) t (* on *) (live_before c ~live_after:xs) then
+    let t' = ceval c t in
+    on s' (* = *) t' (* on *) xs
+  else true
+
+let test_liveness_correct () =
+  let c = parse "x := y; x := 0; y := 1" in
+  let s = assign [("x", 1); ("y", 2)] in
+  let t = assign [("y", 2); ("z", 3)] in
+  let p = fun c -> liveness_correct c s t (Vars.of_list ["x"; "y"]) in
+  assert_property p [c] ~name:"test_liveness_correct"
+
+(* Eliminate assignments to dead variables *)
+let rec bury (c : command) (xs : Vars.t) : command =
+  match c with
+  | Assign (x, _) -> if Vars.mem x xs then c else Skip
+  | Seq (c1, c2) -> Seq (bury c1 (live_before c2 ~live_after:xs), bury c2 xs)
+  | If (e, c1, c2) -> If (e, bury c1 xs, bury c2 xs)
+  | While (e, c) as loop -> While (e, bury c (live_before loop ~live_after:xs))
+  | Skip -> Skip
+
+let test_bury () =
+  let c = parse "x := 0; y := 1; x := y" in
+  let c' = bury c (Vars.of_list ["x"; "y"]) in
+  assert_equal (unparse c') "skip; y := 1; x := y" ~name:"test_bury"
+
+let bury_correct (c : command) (s : state) (xs : name list) : bool =
+  equivalent (ceval (bury c (Vars.of_list xs)) s) (ceval c s) xs
+
+let test_bury_correct () =
+  let c = parse "x := 0; y := 1; x := y" in
+  let p = fun c -> bury_correct c empty ["x"; "y"] in
+  assert_property p [c] ~name:"test_bury_correct"
+
 let () =
   test_def_init ();
   test_well_init_programs_do_not_go_wrong ();
@@ -359,3 +453,8 @@ let () =
   test_fold_correct ();
   test_fold_dce ();
   test_fold_dce_correct ();
+  test_liveness ();
+  test_lemma_10_15 ();
+  test_liveness_correct ();
+  test_bury ();
+  test_bury_correct ();
