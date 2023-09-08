@@ -364,7 +364,11 @@ let rec live_before (c : command) ~(live_after : Vars.t) : Vars.t =
 let test_liveness () =
   let c = parse "x := y; x := 0; y := 1" in
   let l = live_before c ~live_after:(Vars.of_list ["x"; "y"]) in
-  assert_equal (Vars.elements l) ["y"] ~name:"test_liveness"
+  assert_equal (Vars.elements l) ["y"] ~name:"test_liveness";
+
+  let c = parse "while 0 < x { x := y; y := z }" in
+  let l = live_before c ~live_after:(Vars.of_list ["x"]) in
+  assert_equal (Vars.elements l) ["x"; "y"; "z"] ~name:"test_liveness"
 
 let rec gen (c : command) : Vars.t =
   match c with
@@ -406,6 +410,7 @@ let lemma_10_17_2 (e : bexpr) (s1 : state) (s2 : state) : bool =
     beval e s1 = beval e s2
   else true
 
+(* Theorem 10.18 *)
 let liveness_correct (c : command) (s : state) (t : state) (xs : Vars.t) : bool =
   let s' = ceval c s in
   if on s (* = *) t (* on *) (live_before c ~live_after:xs) then
@@ -422,8 +427,10 @@ let test_liveness_correct () =
 
 (* Eliminate assignments to dead variables *)
 let rec bury (c : command) (xs : Vars.t) : command =
+  let live x = Vars.mem x xs in
   match c with
-  | Assign (x, _) -> if Vars.mem x xs then c else Skip
+  | Assign (x, _) when live x -> c
+  | Assign _ (* when dead x *) -> Skip
   | Seq (c1, c2) -> Seq (bury c1 (live_before c2 ~live_after:xs), bury c2 xs)
   | If (e, c1, c2) -> If (e, bury c1 xs, bury c2 xs)
   | While (e, c) as loop -> While (e, bury c (live_before loop ~live_after:xs))
@@ -442,6 +449,52 @@ let test_bury_correct () =
   let p = fun c -> bury_correct c empty ["x"; "y"] in
   assert_property p [c] ~name:"test_bury_correct"
 
+let rec until b f x =
+  if (not (b x)) then until b f (f x) else x
+
+let lfp f = until (fun x -> Vars.equal (f x) x) f Vars.empty
+
+let rec true_live_before (c : command) ~(live_after : Vars.t) : Vars.t =
+  let live x = Vars.mem x live_after in
+  match c with
+  | Assign (x, e) when live x -> Vars.union (vars_of_aexpr e) (Vars.remove x live_after)
+  | Assign _ (* when dead x *) -> live_after
+  | Seq (c1, c2) -> true_live_before c1 ~live_after:(live_before c2 ~live_after)
+  | If (e, c1, c2) ->
+    let live_before_c1 = true_live_before c1 ~live_after in
+    let live_before_c2 = true_live_before c2 ~live_after in
+    Vars.union (vars_of_bexpr e) (Vars.union live_before_c1 live_before_c2)
+  | While (e, c) ->
+    lfp (fun y ->
+        let live_before_c = true_live_before c ~live_after:y in
+        Vars.union (vars_of_bexpr e) (Vars.union live_before_c live_after)
+      )
+  | Skip -> live_after
+
+let test_true_liveness () =
+  let c = parse "x := y; x := 0; y := 1" in
+  let l = true_live_before c ~live_after:(Vars.of_list ["x"; "y"]) in
+  assert_equal (Vars.elements l) [] ~name:"test_true_liveness";
+
+  let c = parse "while 0 < x { x := y; y := z }" in
+  let l = true_live_before c ~live_after:(Vars.of_list ["x"]) in
+  assert_equal (Vars.elements l) ["x"; "y"; "z"] ~name:"test_true_liveness"
+
+(* Lemma 10.31 *)
+let true_liveness_correct (c : command) (s : state) (t : state) (xs : Vars.t) : bool =
+  let s' = ceval c s in
+  if on s (* = *) t (* on *) (true_live_before c ~live_after:xs) then
+    let t' = ceval c t in
+    on s' (* = *) t' (* on *) xs
+  else true
+
+let test_true_liveness_correct () =
+  let c = parse "x := y; x := 0; y := 1" in
+  let s = assign [("x", 1); ("y", 2)] in
+  let t = assign [("y", 2); ("z", 3)] in
+  let p = fun c -> true_liveness_correct c s t (Vars.of_list ["x"; "y"]) in
+  assert_property p [c] ~name:"test_true_liveness_correct"
+
 let () =
   test_def_init ();
   test_well_init_programs_do_not_go_wrong ();
@@ -458,3 +511,5 @@ let () =
   test_liveness_correct ();
   test_bury ();
   test_bury_correct ();
+  test_true_liveness ();
+  test_true_liveness_correct ();
