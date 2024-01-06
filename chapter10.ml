@@ -449,9 +449,6 @@ let test_bury_correct () =
   let p = fun c -> bury_correct c empty ["x"; "y"] in
   assert_property p [c] ~name:"test_bury_correct"
 
-let rec until b f x =
-  if (not (b x)) then until b f (f x) else x
-
 let lfp f = until (fun x -> Vars.equal (f x) x) f Vars.empty
 
 let rec true_live_before (c : command) ~(live_after : Vars.t) : Vars.t =

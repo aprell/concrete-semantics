@@ -1,7 +1,6 @@
-open Imp
-open Ast
-open Eval
-open Parse
+open Imp.Ast
+open Imp.Eval
+open Imp.Parse
 open State
 open Utils
 
@@ -108,9 +107,6 @@ let rec step (s : States.t) (c : States.t Annotated.command) : States.t Annotate
     Annotated.While (i', e, p', step p c, q')
   | Annotated.Skip _ ->
     Annotated.Skip s
-
-let rec until b f x =
-  if (not (b x)) then until b f (f x) else x
 
 let lfp f =
   until (fun x ->
