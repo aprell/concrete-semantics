@@ -1,4 +1,4 @@
-CHAPTERS := 2 3 7 8 9 10
+CHAPTERS := 2 3 7 8 9 10 13
 
 default: test-chapters
 

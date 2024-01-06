@@ -79,3 +79,33 @@ let rec convert_command (c : command) : Typed.command =
   | If (e, c1, c2) -> Typed.If (convert_bexpr e, convert_command c1, convert_command c2)
   | While (e, c) -> Typed.While (convert_bexpr e, convert_command c)
   | Skip -> Typed.Skip
+
+module Annotated = struct
+  type 'a command =
+    | Assign of name * aexpr * 'a
+    | Seq of 'a command * 'a command
+    (* if b { {P1} c1 } else { {P2} c2 } {Q} *)
+    | If of bexpr * 'a * 'a command * 'a * 'a command * 'a
+    (* {I} while b { {P} c } {Q} *)
+    | While of 'a * bexpr * 'a * 'a command * 'a
+    | Skip of 'a
+
+  let pp_command' = pp_command
+
+  let rec pp_command (show : 'a -> name) = function
+    | Assign (x, e, p) ->
+      Printf.sprintf "%s {%s}"
+        (pp_command' (Assign (x, e))) (show p)
+    | Seq (c1, c2) ->
+      Printf.sprintf "%s;\n%s"
+        (pp_command show c1) (pp_command show c2)
+    | If (e, p1, c1, p2, c2, q) ->
+      Printf.sprintf "if %s {\n  {%s}\n  %s\n} else {\n  {%s}\n  %s\n}\n{%s}"
+        (pp_bexpr e) (show p1) (pp_command show c1) (show p2) (pp_command show c2) (show q)
+    | While (i, e, p, c, q) ->
+      Printf.sprintf "{%s}\nwhile %s {\n  {%s}\n  %s\n}\n{%s}"
+        (show i) (pp_bexpr e) (show p) (pp_command show c) (show q)
+    | Skip p ->
+      Printf.sprintf "%s\n{%s}"
+        (pp_command' Skip) (show p)
+end
