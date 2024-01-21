@@ -14,4 +14,4 @@ let equivalent f g xs =
   List.for_all (fun x -> f x = g x) xs
 
 let rec until b f x =
-  if (not (b x)) then until b f (f x) else x
+  if not (b x) then until b f (f x) else x

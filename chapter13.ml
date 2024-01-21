@@ -290,11 +290,8 @@ let rec step_parity
   | Annotated.Skip _ ->
     Annotated.Skip s
 
-let rec while_ b f x =
-  if b x then while_ b f (f x) else x
-
 let pfp order f s =
-  while_ (fun x -> not (order (f x) x)) f s
+  until (fun x -> order (f x) x) f s
 
 let bot (c : command) =
   annotate (function _ -> []) c
