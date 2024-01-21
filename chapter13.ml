@@ -272,13 +272,12 @@ module Parity = struct
 
   let rec aeval (e : aexpr) (s : t st) : t =
     match e with
-    | Int n -> num_parity n
+    | Int n when n mod 2 = 0 -> Even
+    | Int _ (* when n mod 2 <> 0 *) -> Odd
     | Var x -> List.assoc x s
-    | Add (e1, e2) -> plus_parity (aeval e1 s) (aeval e2 s)
+    | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
 
-  and num_parity n = if n mod 2 = 0 then Even else Odd
-
-  and plus_parity a b =
+  and plus a b =
     match a, b with
     | Even, Even
     | Odd, Odd -> Even
@@ -354,7 +353,7 @@ let test_abs_interp_parity_2 () =
   let c = parse "x := 3; while x < 10 { x := x + 1 }" in
   let s = [("x", Parity.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (Parity.show["x"] s)
+    (Parity.show ["x"] s)
     (Annotated.pp_command (Parity.show ["x"]) (abs_interp_parity c s))
   in
   assert (ai = {|
