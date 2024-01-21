@@ -308,7 +308,7 @@ let show_parity (xs : name list) (s : parity st) : string =
   |> String.concat ", "
   |> Printf.sprintf "%s"
 
-let test_abs_interp_parity () =
+let test_abs_interp_parity_1 () =
   let c = parse "x := 3; while x < 10 { x := x + 2 }" in
   let s = [("x", Either)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
@@ -326,9 +326,29 @@ while x < 10 {
 {x := Odd}
 |})
 
+(* Exercise 13.10 *)
+let test_abs_interp_parity_2 () =
+  let c = parse "x := 3; while x < 10 { x := x + 1 }" in
+  let s = [("x", Either)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (show_parity ["x"] s)
+    (Annotated.pp_command (show_parity ["x"]) (abs_interp_parity c s))
+  in
+  assert (ai = {|
+{x := Either}
+x := 3 {x := Odd};
+{x := Either}
+while x < 10 {
+  {x := Either}
+  x := x + 1 {x := Either}
+}
+{x := Either}
+|})
+
 let () =
   test_collecting_semantics_1 ();
   test_collecting_semantics_2 ();
   test_collecting_semantics_3 ();
   test_lemma_13_8 ();
-  test_abs_interp_parity ();
+  test_abs_interp_parity_1 ();
+  test_abs_interp_parity_2 ();
