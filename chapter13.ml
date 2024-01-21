@@ -288,54 +288,56 @@ module Parity = struct
     | _ -> assert false
 end
 
-(* To be generalized later *)
+module Abstract_interpreter (Domain : Abstract_domain) = struct
+  let rec step
+    (s : Domain.t st)
+    (c : Domain.t st Annotated.command)
+       : Domain.t st Annotated.command =
+    match c with
+    | Annotated.Assign (x, e, _) ->
+      Annotated.Assign (x, e, asem x e s)
+    | Annotated.Seq (c1, c2) ->
+      Annotated.Seq (step s c1, step (post_annotation c1) c2)
+    | Annotated.If (e, p1, c1, p2, c2, _) ->
+      let p1', p2' = bsem e s, bsem (Not e) s in
+      let q' = Domain.join (post_annotation c1) (post_annotation c2) in
+      Annotated.If (e, p1', step p1 c1, p2', step p2 c2, q')
+    | Annotated.While (i, e, p, c, _) ->
+      let i' = Domain.join s (post_annotation c) in
+      let p', q' = bsem e i, bsem (Not e) i in
+      Annotated.While (i', e, p', step p c, q')
+    | Annotated.Skip _ ->
+      Annotated.Skip s
 
-let asem_parity x e s =
-  match List.assoc_opt x s with
-  | Some _ -> (x, Parity.aeval e s) :: s
-  | None -> (x, Parity.bot) :: s
+  and asem x e s =
+    match List.assoc_opt x s with
+    | Some _ -> (x, Domain.aeval e s) :: s
+    | None -> (x, Domain.bot) :: s
 
-let bsem_parity _e s = s
+  and bsem _e s = s
 
-let rec step_parity
-  (s : Parity.t st)
-  (c : Parity.t st Annotated.command)
-     : Parity.t st Annotated.command =
-  match c with
-  | Annotated.Assign (x, e, _) ->
-    Annotated.Assign (x, e, asem_parity x e s)
-  | Annotated.Seq (c1, c2) ->
-    Annotated.Seq (step_parity s c1, step_parity (post_annotation c1) c2)
-  | Annotated.If (e, p1, c1, p2, c2, _) ->
-    let p1', p2' = bsem_parity e s, bsem_parity (Not e) s in 
-    let q' = Parity.join (post_annotation c1) (post_annotation c2) in
-    Annotated.If (e, p1', step_parity p1 c1, p2', step_parity p2 c2, q')
-  | Annotated.While (i, e, p, c, _) ->
-    let i' = Parity.join s (post_annotation c) in
-    let p', q' = bsem_parity e i, bsem_parity (Not e) i in
-    Annotated.While (i', e, p', step_parity p c, q')
-  | Annotated.Skip _ ->
-    Annotated.Skip s
+  let pfp order f s =
+    until (fun x -> order (f x) x) f s
 
-let pfp order f s =
-  until (fun x -> order (f x) x) f s
+  let bot (c : command) =
+    annotate (function _ -> []) c
 
-let bot (c : command) =
-  annotate (function _ -> []) c
+  let run (c : command) (s : Domain.t st) =
+    pfp (fun x y ->
+        let sx = annotations x in
+        let sy = annotations y in
+        List.for_all2 Domain.order sx sy
+      ) (step s) (bot c)
+end
 
-let abs_interp_parity (c : command) (s : Parity.t st) =
-  pfp (fun x y ->
-      let sx = annotations x in
-      let sy = annotations y in
-      List.for_all2 Parity.order sx sy
-    ) (step_parity s) (bot c)
+module Parity_interpreter = Abstract_interpreter (Parity)
 
-let test_abs_interp_parity_1 () =
+let test_parity_1 () =
   let c = parse "x := 3; while x < 10 { x := x + 2 }" in
   let s = [("x", Parity.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
     (Parity.show ["x"] s)
-    (Annotated.pp_command (Parity.show ["x"]) (abs_interp_parity c s))
+    (Annotated.pp_command (Parity.show ["x"]) (Parity_interpreter.run c s))
   in
   assert (ai = {|
 {x := Either}
@@ -349,12 +351,12 @@ while x < 10 {
 |})
 
 (* Exercise 13.10 *)
-let test_abs_interp_parity_2 () =
+let test_parity_2 () =
   let c = parse "x := 3; while x < 10 { x := x + 1 }" in
   let s = [("x", Parity.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
     (Parity.show ["x"] s)
-    (Annotated.pp_command (Parity.show ["x"]) (abs_interp_parity c s))
+    (Annotated.pp_command (Parity.show ["x"]) (Parity_interpreter.run c s))
   in
   assert (ai = {|
 {x := Either}
@@ -372,5 +374,5 @@ let () =
   test_collecting_semantics_2 ();
   test_collecting_semantics_3 ();
   test_lemma_13_8 ();
-  test_abs_interp_parity_1 ();
-  test_abs_interp_parity_2 ();
+  test_parity_1 ();
+  test_parity_2 ();
