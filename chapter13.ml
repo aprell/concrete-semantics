@@ -207,73 +207,101 @@ module Vars = Set.Make (struct
   let compare = Stdlib.compare
 end)
 
-type parity = None | Even | Odd | Either
+module type Abstract_domain = sig
+  (* Type of abstract values *)
+  type t
+  (* Least element *)
+  val bot : t
+  (* Greatest element *)
+  val top : t
+  val to_string : t -> string
+  val show : name list -> t st -> string
+  (* <= *)
+  val order : t st -> t st -> bool
+  (* Least upper bound of x and y *)
+  val join : t st -> t st -> t st
+  (* Abstract arithmetic *)
+  val aeval : aexpr -> t st -> t
+end
 
-let string_of_parity = function
-  | None -> "None"
-  | Even -> "Even"
-  | Odd -> "Odd"
-  | Either -> "Either"
+module Parity = struct
+  type t = None | Even | Odd | Either
 
-let assoc x xs =
-  List.assoc_opt x xs
-  |> Option.value ~default:None
+  let bot = None
 
-let order_parity a b = a = None || a = b || b = Either
+  let top = Either
 
-let order_parity' a b =
-  let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-  Vars.fold (fun x s ->
-      let av, av' = assoc x a, assoc x b in
-      (x, order_parity av av') :: s
-    ) names []
-  |> List.for_all snd
+  let to_string = function
+    | None -> "None"
+    | Even -> "Even"
+    | Odd -> "Odd"
+    | Either -> "Either"
 
-let join_parity a b =
-  match a, b with
-  | None, a
-  | a, None -> a
-  | _ when a = b -> a
-  | _ -> Either
+  let show (xs : name list) (s : t st) : string =
+    List.map (fun x -> Printf.sprintf "%s := %s" x (List.assoc x s |> to_string)) xs
+    |> String.concat ", "
+    |> Printf.sprintf "%s"
 
-let join_parity' a b =
-  let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-  Vars.fold (fun x s ->
-      let av, av' = assoc x a, assoc x b in
-      (x, join_parity av av') :: s
-    ) names []
+  let assoc x xs =
+    List.assoc_opt x xs
+    |> Option.value ~default:None
+
+  let order' a b = a = None || a = b || b = Either
+
+  let order a b =
+    let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+    Vars.fold (fun x s ->
+        let av, av' = assoc x a, assoc x b in
+        (x, order' av av') :: s
+      ) names []
+    |> List.for_all snd
+
+  let join' a b =
+    match a, b with
+    | None, a
+    | a, None -> a
+    | _ when a = b -> a
+    | _ -> Either
+
+  let join a b =
+    let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+    Vars.fold (fun x s ->
+        let av, av' = assoc x a, assoc x b in
+        (x, join' av av') :: s
+      ) names []
+
+  let rec aeval (e : aexpr) (s : t st) : t =
+    match e with
+    | Int n -> num_parity n
+    | Var x -> List.assoc x s
+    | Add (e1, e2) -> plus_parity (aeval e1 s) (aeval e2 s)
+
+  and num_parity n = if n mod 2 = 0 then Even else Odd
+
+  and plus_parity a b =
+    match a, b with
+    | Even, Even
+    | Odd, Odd -> Even
+    | Even, Odd
+    | Odd, Even -> Odd
+    | Either, _
+    | _, Either -> Either
+    | _ -> assert false
+end
 
 (* To be generalized later *)
 
-let rec aeval_parity (e : aexpr) (s : parity st) : parity =
-  match e with
-  | Int n -> num_parity n
-  | Var x -> List.assoc x s
-  | Add (e1, e2) -> plus_parity (aeval_parity e1 s) (aeval_parity e2 s)
-
-and num_parity n = if n mod 2 = 0 then Even else Odd
-
-and plus_parity a b =
-  match a, b with
-  | Even, Even
-  | Odd, Odd -> Even
-  | Even, Odd
-  | Odd, Even -> Odd
-  | Either, _
-  | _, Either -> Either
-  | _ -> assert false
-
 let asem_parity x e s =
   match List.assoc_opt x s with
-  | Some _ -> (x, aeval_parity e s) :: s
-  | None -> (x, None) :: s
+  | Some _ -> (x, Parity.aeval e s) :: s
+  | None -> (x, Parity.bot) :: s
 
 let bsem_parity _e s = s
 
 let rec step_parity
-  (s : parity st)
-  (c : parity st Annotated.command)
-     : parity st Annotated.command =
+  (s : Parity.t st)
+  (c : Parity.t st Annotated.command)
+     : Parity.t st Annotated.command =
   match c with
   | Annotated.Assign (x, e, _) ->
     Annotated.Assign (x, e, asem_parity x e s)
@@ -281,10 +309,10 @@ let rec step_parity
     Annotated.Seq (step_parity s c1, step_parity (post_annotation c1) c2)
   | Annotated.If (e, p1, c1, p2, c2, _) ->
     let p1', p2' = bsem_parity e s, bsem_parity (Not e) s in 
-    let q' = join_parity' (post_annotation c1) (post_annotation c2) in
+    let q' = Parity.join (post_annotation c1) (post_annotation c2) in
     Annotated.If (e, p1', step_parity p1 c1, p2', step_parity p2 c2, q')
   | Annotated.While (i, e, p, c, _) ->
-    let i' = join_parity' s (post_annotation c) in
+    let i' = Parity.join s (post_annotation c) in
     let p', q' = bsem_parity e i, bsem_parity (Not e) i in
     Annotated.While (i', e, p', step_parity p c, q')
   | Annotated.Skip _ ->
@@ -296,24 +324,19 @@ let pfp order f s =
 let bot (c : command) =
   annotate (function _ -> []) c
 
-let abs_interp_parity (c : command) (s : parity st) =
+let abs_interp_parity (c : command) (s : Parity.t st) =
   pfp (fun x y ->
       let sx = annotations x in
       let sy = annotations y in
-      List.for_all2 order_parity' sx sy
+      List.for_all2 Parity.order sx sy
     ) (step_parity s) (bot c)
-
-let show_parity (xs : name list) (s : parity st) : string =
-  List.map (fun x -> Printf.sprintf "%s := %s" x (List.assoc x s |> string_of_parity)) xs
-  |> String.concat ", "
-  |> Printf.sprintf "%s"
 
 let test_abs_interp_parity_1 () =
   let c = parse "x := 3; while x < 10 { x := x + 2 }" in
-  let s = [("x", Either)] in
+  let s = [("x", Parity.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (show_parity ["x"] s)
-    (Annotated.pp_command (show_parity ["x"]) (abs_interp_parity c s))
+    (Parity.show ["x"] s)
+    (Annotated.pp_command (Parity.show ["x"]) (abs_interp_parity c s))
   in
   assert (ai = {|
 {x := Either}
@@ -329,10 +352,10 @@ while x < 10 {
 (* Exercise 13.10 *)
 let test_abs_interp_parity_2 () =
   let c = parse "x := 3; while x < 10 { x := x + 1 }" in
-  let s = [("x", Either)] in
+  let s = [("x", Parity.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (show_parity ["x"] s)
-    (Annotated.pp_command (show_parity ["x"]) (abs_interp_parity c s))
+    (Parity.show["x"] s)
+    (Annotated.pp_command (Parity.show ["x"]) (abs_interp_parity c s))
   in
   assert (ai = {|
 {x := Either}
