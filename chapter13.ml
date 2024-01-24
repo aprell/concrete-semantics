@@ -200,14 +200,7 @@ let test_lemma_13_8 () =
   let p = fun c -> lemma_13_8 c s in
   assert_property p [c] ~name:"Lemma 13.8"
 
-type 'av st = (name * 'av) list
-
-module Vars = Set.Make (struct
-  type t = name
-  let compare = Stdlib.compare
-end)
-
-module type Abstract_domain = sig
+module type Abstract_value = sig
   (* Type of abstract values *)
   type t
   (* Least element *)
@@ -215,40 +208,69 @@ module type Abstract_domain = sig
   (* Greatest element *)
   val top : t
   val to_string : t -> string
-  val show : name list -> t st -> string
-  (* <= *)
-  val order : t st -> t st -> bool
-  (* Least upper bound of x and y *)
-  val join : t st -> t st -> t st
-  (* Abstract arithmetic *)
-  val aeval : aexpr -> t st -> t
 end
 
-module Parity = struct
-  type t = None | Even | Odd | Either
+module type Abstract_state = sig
+  (* Type of abstract values *)
+  type value
+  (* Type of abstract states *)
+  type t = (name * value) list
+  val empty : t
+  val assoc : name -> t -> value
+  val assoc_opt : name -> t -> value option
+end
 
-  let bot = None
+module type Abstract_domain = sig
+  module Value : Abstract_value
+  module State : Abstract_state with type value := Value.t
+  val show : name list -> State.t -> string
+  (* <= *)
+  val order : State.t -> State.t -> bool
+  (* Least upper bound of x and y *)
+  val join : State.t -> State.t -> State.t
+  (* Abstract operations *)
+  val asem : name -> aexpr -> State.t -> State.t
+  val bsem : bexpr -> State.t -> State.t
+end
 
-  let top = Either
+module Vars = Set.Make (struct
+  type t = name
+  let compare = Stdlib.compare
+end)
 
-  let to_string = function
-    | None -> "None"
-    | Even -> "Even"
-    | Odd -> "Odd"
-    | Either -> "Either"
+module Parity : Abstract_domain = struct
+  module Value = struct
+    type t = None | Even | Odd | Either
+    let bot = None
+    let top = Either
+    let to_string = function
+      | None -> "None"
+      | Even -> "Even"
+      | Odd -> "Odd"
+      | Either -> "Either"
+  end
 
-  let show (xs : name list) (s : t st) : string =
-    List.map (fun x -> Printf.sprintf "%s := %s" x (List.assoc x s |> to_string)) xs
+  module State = struct
+    type t = (name * Value.t) list
+    let empty = []
+    let assoc = List.assoc
+    let assoc_opt = List.assoc_opt
+  end
+
+  open Value
+
+  let show (xs : name list) (s : State.t) : string =
+    List.map (fun x -> Printf.sprintf "%s := %s" x (State.assoc x s |> to_string)) xs
     |> String.concat ", "
     |> Printf.sprintf "%s"
 
-  let assoc x xs =
-    List.assoc_opt x xs
+  let assoc (x : name) (s : State.t) =
+    State.assoc_opt x s
     |> Option.value ~default:None
 
   let order' a b = a = None || a = b || b = Either
 
-  let order a b =
+  let order (a : State.t) (b : State.t) : bool =
     let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
     Vars.fold (fun x s ->
         let av, av' = assoc x a, assoc x b in
@@ -263,18 +285,18 @@ module Parity = struct
     | _ when a = b -> a
     | _ -> Either
 
-  let join a b =
+  let join (a : State.t) (b : State.t) : State.t =
     let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
     Vars.fold (fun x s ->
         let av, av' = assoc x a, assoc x b in
         (x, join' av av') :: s
       ) names []
 
-  let rec aeval (e : aexpr) (s : t st) : t =
+  let rec aeval (e : aexpr) (s : State.t) : Value.t =
     match e with
     | Int n when n mod 2 = 0 -> Even
     | Int _ (* when n mod 2 <> 0 *) -> Odd
-    | Var x -> List.assoc x s
+    | Var x -> State.assoc x s
     | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
 
   and plus a b =
@@ -286,43 +308,43 @@ module Parity = struct
     | Either, _
     | _, Either -> Either
     | _ -> assert false
+
+  let asem (x : name) (e : aexpr) (s : State.t) : State.t =
+    match State.assoc_opt x s with
+    | Some _ -> (x, aeval e s) :: s
+    | None -> (x, bot) :: s
+
+  let bsem (_e : bexpr) (s : State.t) : State.t = s
 end
 
 module Abstract_interpreter (Domain : Abstract_domain) = struct
   let rec step
-    (s : Domain.t st)
-    (c : Domain.t st Annotated.command)
-       : Domain.t st Annotated.command =
+    (s : Domain.State.t)
+    (c : Domain.State.t Annotated.command)
+       : Domain.State.t Annotated.command =
     match c with
     | Annotated.Assign (x, e, _) ->
-      Annotated.Assign (x, e, asem x e s)
+      Annotated.Assign (x, e, Domain.asem x e s)
     | Annotated.Seq (c1, c2) ->
       Annotated.Seq (step s c1, step (post_annotation c1) c2)
     | Annotated.If (e, p1, c1, p2, c2, _) ->
-      let p1', p2' = bsem e s, bsem (Not e) s in
+      let p1', p2' = Domain.bsem e s, Domain.bsem (Not e) s in
       let q' = Domain.join (post_annotation c1) (post_annotation c2) in
       Annotated.If (e, p1', step p1 c1, p2', step p2 c2, q')
     | Annotated.While (i, e, p, c, _) ->
       let i' = Domain.join s (post_annotation c) in
-      let p', q' = bsem e i, bsem (Not e) i in
+      let p', q' = Domain.bsem e i, Domain.bsem (Not e) i in
       Annotated.While (i', e, p', step p c, q')
     | Annotated.Skip _ ->
       Annotated.Skip s
 
-  and asem x e s =
-    match List.assoc_opt x s with
-    | Some _ -> (x, Domain.aeval e s) :: s
-    | None -> (x, Domain.bot) :: s
-
-  and bsem _e s = s
-
   let pfp order f s =
     until (fun x -> order (f x) x) f s
 
-  let bot (c : command) =
-    annotate (function _ -> []) c
+  let bot (c : command) : Domain.State.t Annotated.command =
+    annotate (function _ -> Domain.State.empty) c
 
-  let run (c : command) (s : Domain.t st) =
+  let run (c : command) (s : Domain.State.t) : Domain.State.t Annotated.command =
     pfp (fun x y ->
         let sx = annotations x in
         let sy = annotations y in
@@ -334,7 +356,7 @@ module Parity_interpreter = Abstract_interpreter (Parity)
 
 let test_parity_1 () =
   let c = parse "x := 3; while x < 10 { x := x + 2 }" in
-  let s = [("x", Parity.top)] in
+  let s = [("x", Parity.Value.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
     (Parity.show ["x"] s)
     (Annotated.pp_command (Parity.show ["x"]) (Parity_interpreter.run c s))
@@ -353,7 +375,7 @@ while x < 10 {
 (* Exercise 13.10 *)
 let test_parity_2 () =
   let c = parse "x := 3; while x < 10 { x := x + 1 }" in
-  let s = [("x", Parity.top)] in
+  let s = [("x", Parity.Value.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
     (Parity.show ["x"] s)
     (Annotated.pp_command (Parity.show ["x"]) (Parity_interpreter.run c s))
