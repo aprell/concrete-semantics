@@ -216,7 +216,6 @@ module type Abstract_state = sig
   (* Type of abstract states *)
   type t = (name * value) list
   val empty : t
-  val assoc : name -> t -> value
   val assoc_opt : name -> t -> value option
 end
 
@@ -253,20 +252,19 @@ module Parity : Abstract_domain = struct
   module State = struct
     type t = (name * Value.t) list
     let empty = []
-    let assoc = List.assoc
     let assoc_opt = List.assoc_opt
   end
 
   open Value
 
-  let show (xs : name list) (s : State.t) : string =
-    List.map (fun x -> Printf.sprintf "%s := %s" x (State.assoc x s |> to_string)) xs
-    |> String.concat ", "
-    |> Printf.sprintf "%s"
-
   let assoc (x : name) (s : State.t) =
     State.assoc_opt x s
     |> Option.value ~default:None
+
+  let show (xs : name list) (s : State.t) : string =
+    List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> to_string)) xs
+    |> String.concat ", "
+    |> Printf.sprintf "%s"
 
   let order' a b = a = None || a = b || b = Either
 
@@ -296,7 +294,7 @@ module Parity : Abstract_domain = struct
     match e with
     | Int n when n mod 2 = 0 -> Even
     | Int _ (* when n mod 2 <> 0 *) -> Odd
-    | Var x -> State.assoc x s
+    | Var x -> assoc x s
     | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
 
   and plus a b =
