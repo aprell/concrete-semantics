@@ -203,10 +203,14 @@ let test_lemma_13_8 () =
 module type Abstract_value = sig
   (* Type of abstract values *)
   type t
-  (* Least element *)
+  (* Least element: bot <= x for all x *)
   val bot : t
-  (* Greatest element *)
+  (* Greatest element: x <= top for all x *)
   val top : t
+  (* <= (abstraction of subset ordering) *)
+  val order : t -> t -> bool
+  (* Least upper bound of two abstract values *)
+  val join : t -> t -> t
   val to_string : t -> string
 end
 
@@ -216,17 +220,18 @@ module type Abstract_state = sig
   (* Type of abstract states *)
   type t = (name * value) list
   val empty : t
+  val assoc : name -> t -> value
   val assoc_opt : name -> t -> value option
+  (* <= (abstraction of subset ordering) *)
+  val order : t -> t -> bool
+  (* Least upper bound of two abstract states *)
+  val join : t -> t -> t
+  val show : name list -> t -> string
 end
 
 module type Abstract_domain = sig
   module Value : Abstract_value
   module State : Abstract_state with type value := Value.t
-  val show : name list -> State.t -> string
-  (* <= *)
-  val order : State.t -> State.t -> bool
-  (* Least upper bound of x and y *)
-  val join : State.t -> State.t -> State.t
   (* Abstract operations *)
   val asem : name -> aexpr -> State.t -> State.t
   val bsem : bexpr -> State.t -> State.t
@@ -242,6 +247,16 @@ module Parity : Abstract_domain = struct
     type t = None | Even | Odd | Either
     let bot = None
     let top = Either
+
+    let order a b = a = None || a = b || b = Either
+
+    let join a b =
+      match a, b with
+      | None, a
+      | a, None -> a
+      | _ when a = b -> a
+      | _ -> Either
+
     let to_string = function
       | None -> "None"
       | Even -> "Even"
@@ -252,49 +267,41 @@ module Parity : Abstract_domain = struct
   module State = struct
     type t = (name * Value.t) list
     let empty = []
+
+    let assoc (x : name) (s : t) =
+      List.assoc_opt x s
+      |> Option.value ~default:Value.bot
+
     let assoc_opt = List.assoc_opt
+
+    let order (a : t) (b : t) : bool =
+      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+      Vars.fold (fun x s ->
+          let av, av' = assoc x a, assoc x b in
+          (x, Value.order av av') :: s
+        ) names []
+      |> List.for_all snd
+
+    let join (a : t) (b : t) : t =
+      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+      Vars.fold (fun x s ->
+          let av, av' = assoc x a, assoc x b in
+          (x, Value.join av av') :: s
+        ) names []
+
+    let show (xs : name list) (s : t) : string =
+      List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> Value.to_string)) xs
+      |> String.concat ", "
+      |> Printf.sprintf "%s"
   end
 
   open Value
-
-  let assoc (x : name) (s : State.t) =
-    State.assoc_opt x s
-    |> Option.value ~default:None
-
-  let show (xs : name list) (s : State.t) : string =
-    List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> to_string)) xs
-    |> String.concat ", "
-    |> Printf.sprintf "%s"
-
-  let order' a b = a = None || a = b || b = Either
-
-  let order (a : State.t) (b : State.t) : bool =
-    let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-    Vars.fold (fun x s ->
-        let av, av' = assoc x a, assoc x b in
-        (x, order' av av') :: s
-      ) names []
-    |> List.for_all snd
-
-  let join' a b =
-    match a, b with
-    | None, a
-    | a, None -> a
-    | _ when a = b -> a
-    | _ -> Either
-
-  let join (a : State.t) (b : State.t) : State.t =
-    let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-    Vars.fold (fun x s ->
-        let av, av' = assoc x a, assoc x b in
-        (x, join' av av') :: s
-      ) names []
 
   let rec aeval (e : aexpr) (s : State.t) : Value.t =
     match e with
     | Int n when n mod 2 = 0 -> Even
     | Int _ (* when n mod 2 <> 0 *) -> Odd
-    | Var x -> assoc x s
+    | Var x -> State.assoc x s
     | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
 
   and plus a b =
@@ -327,10 +334,10 @@ module Abstract_interpreter (Domain : Abstract_domain) = struct
       Annotated.Seq (step s c1, step (post_annotation c1) c2)
     | Annotated.If (e, p1, c1, p2, c2, _) ->
       let p1', p2' = Domain.bsem e s, Domain.bsem (Not e) s in
-      let q' = Domain.join (post_annotation c1) (post_annotation c2) in
+      let q' = Domain.State.join (post_annotation c1) (post_annotation c2) in
       Annotated.If (e, p1', step p1 c1, p2', step p2 c2, q')
     | Annotated.While (i, e, p, c, _) ->
-      let i' = Domain.join s (post_annotation c) in
+      let i' = Domain.State.join s (post_annotation c) in
       let p', q' = Domain.bsem e i, Domain.bsem (Not e) i in
       Annotated.While (i', e, p', step p c, q')
     | Annotated.Skip _ ->
@@ -346,7 +353,7 @@ module Abstract_interpreter (Domain : Abstract_domain) = struct
     pfp (fun x y ->
         let sx = annotations x in
         let sy = annotations y in
-        List.for_all2 Domain.order sx sy
+        List.for_all2 Domain.State.order sx sy
       ) (step s) (bot c)
 end
 
@@ -356,8 +363,8 @@ let test_parity_1 () =
   let c = parse "x := 3; while x < 10 { x := x + 2 }" in
   let s = [("x", Parity.Value.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (Parity.show ["x"] s)
-    (Annotated.pp_command (Parity.show ["x"]) (Parity_interpreter.run c s))
+    (Parity.State.show ["x"] s)
+    (Annotated.pp_command (Parity.State.show ["x"]) (Parity_interpreter.run c s))
   in
   assert (ai = {|
 {x := Either}
@@ -375,8 +382,8 @@ let test_parity_2 () =
   let c = parse "x := 3; while x < 10 { x := x + 1 }" in
   let s = [("x", Parity.Value.top)] in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (Parity.show ["x"] s)
-    (Annotated.pp_command (Parity.show ["x"]) (Parity_interpreter.run c s))
+    (Parity.State.show ["x"] s)
+    (Annotated.pp_command (Parity.State.show ["x"]) (Parity_interpreter.run c s))
   in
   assert (ai = {|
 {x := Either}
