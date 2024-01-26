@@ -211,6 +211,8 @@ module type Abstract_value = sig
   val order : t -> t -> bool
   (* Least upper bound of two abstract values *)
   val join : t -> t -> t
+  (* Concretization function *)
+  val gamma : t -> Ints.t
   val to_string : t -> string
 end
 
@@ -256,6 +258,18 @@ module Parity : Abstract_domain = struct
       | a, None -> a
       | _ when a = b -> a
       | _ -> Either
+
+    (* Let's keep it simple here: no infinite sets *)
+    let gamma = function
+      | None -> Ints.empty
+      | a -> let xs = List.init 100 (fun i -> i - 50 + 1) in
+        begin match a with
+        | Even -> List.filter (fun i -> i mod 2 = 0) xs
+        | Odd -> List.filter (fun i -> i mod 2 <> 0) xs
+        | Either -> xs
+        | _ -> assert false
+        end
+        |> Ints.of_list
 
     let to_string = function
       | None -> "None"
@@ -396,6 +410,23 @@ while x < 10 {
 {x := Either}
 |})
 
+(* Abstract interpretation overapproximates the collecting semantics *)
+let lemma_13_25 (module D : Abstract_domain) (c : command) : bool =
+  let module AI = Abstract_interpreter (D) in
+  let s = [("x", D.Value.top)] in
+  let x = annotations (AI.run c s) in
+  let s = States.singleton [("x", 0)] in
+  let y = annotations (collecting_semantics c s) in
+  assert (List.length x = List.length y);
+  List.for_all2 (fun s t ->
+    List.for_all (fun (x, av) ->
+      Ints.subset (values_of x t) (D.Value.gamma av)) s) x y
+
+let test_lemma_13_25 () =
+  let c = parse "x := 3; while x < 10 { x := x + 2 }" in
+  let p = lemma_13_25 (module Parity) in
+  assert_property p [c] ~name:"Lemma 13.25"
+
 let () =
   test_collecting_semantics_1 ();
   test_collecting_semantics_2 ();
@@ -403,3 +434,4 @@ let () =
   test_lemma_13_8 ();
   test_parity_1 ();
   test_parity_2 ();
+  test_lemma_13_25 ();
