@@ -414,13 +414,13 @@ while x < 10 {
 let lemma_13_25 (module D : Abstract_domain) (c : command) : bool =
   let module AI = Abstract_interpreter (D) in
   let s = [("x", D.Value.top)] in
-  let x = annotations (AI.run c s) in
+  let xs = annotations (AI.run c s) in
   let s = States.singleton [("x", 0)] in
-  let y = annotations (collecting_semantics c s) in
-  assert (List.length x = List.length y);
+  let ys = annotations (collecting_semantics c s) in
+  (* The concretization of xs overapproximates (>=) ys *)
   List.for_all2 (fun s t ->
     List.for_all (fun (x, av) ->
-      Ints.subset (values_of x t) (D.Value.gamma av)) s) x y
+      Ints.subset (values_of x t) (D.Value.gamma av)) s) xs ys
 
 let test_lemma_13_25 () =
   let c = parse "x := 3; while x < 10 { x := x + 2 }" in
