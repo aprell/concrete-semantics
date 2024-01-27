@@ -336,6 +336,85 @@ module Parity : Abstract_domain = struct
   let bsem (_e : bexpr) (s : State.t) : State.t = s
 end
 
+module Constant : Abstract_domain = struct
+  module Value = struct
+    type t = None | Const of int | Any
+    let bot = None
+    let top = Any
+
+    let order a b = a = None || a = b || b = Any
+
+    let join a b =
+      match a, b with
+      | None, a
+      | a, None -> a
+      | _ when a = b -> a
+      | _ -> Any
+
+    (* Let's keep it simple here: no infinite sets *)
+    let gamma = function
+      | None -> Ints.empty
+      | Const i -> Ints.singleton i
+      | Any -> Ints.of_list (List.init 100 (fun i -> i - 50 + 1))
+
+    let to_string = function
+      | None -> "None"
+      | Const i -> string_of_int i
+      | Any -> "Any"
+  end
+
+  module State = struct
+    type t = (name * Value.t) list
+    let empty = []
+
+    let assoc (x : name) (s : t) =
+      List.assoc_opt x s
+      |> Option.value ~default:Value.bot
+
+    let assoc_opt = List.assoc_opt
+
+    let order (a : t) (b : t) : bool =
+      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+      Vars.fold (fun x s ->
+          let av, av' = assoc x a, assoc x b in
+          (x, Value.order av av') :: s
+        ) names []
+      |> List.for_all snd
+
+    let join (a : t) (b : t) : t =
+      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+      Vars.fold (fun x s ->
+          let av, av' = assoc x a, assoc x b in
+          (x, Value.join av av') :: s
+        ) names []
+
+    let show (xs : name list) (s : t) : string =
+      List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> Value.to_string)) xs
+      |> String.concat ", "
+      |> Printf.sprintf "%s"
+  end
+
+  open Value
+
+  let rec aeval (e : aexpr) (s : State.t) : Value.t =
+    match e with
+    | Int n -> Const n
+    | Var x -> State.assoc x s
+    | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
+
+  and plus a b =
+    match a, b with
+    | Const i, Const j -> Const (i + j)
+    | _ -> Any
+
+  let asem (x : name) (e : aexpr) (s : State.t) : State.t =
+    match State.assoc_opt x s with
+    | Some _ -> (x, aeval e s) :: s
+    | None -> (x, bot) :: s
+
+  let bsem (_e : bexpr) (s : State.t) : State.t = s
+end
+
 module Abstract_interpreter (Domain : Abstract_domain) = struct
   let rec step
     (s : Domain.State.t)
@@ -427,6 +506,69 @@ let test_lemma_13_25 () =
   let p = lemma_13_25 (module Parity) in
   assert_property p [c] ~name:"Lemma 13.25"
 
+module Constant_interpreter = Abstract_interpreter (Constant)
+
+let test_constant_1 () =
+  let c = parse "x := 42; if x < 43 { x := 5 } else { x := 5 }" in
+  let s = [("x", Constant.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Constant.State.show ["x"] s)
+    (Annotated.pp_command (Constant.State.show ["x"]) (Constant_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := Any}
+x := 42 {x := 42};
+if x < 43 {
+  {x := 42}
+  x := 5 {x := 5}
+} else {
+  {x := 42}
+  x := 5 {x := 5}
+}
+{x := 5}
+|})
+
+let test_constant_2 () =
+  let c = parse "x := 42; if x < 43 { x := 5 } else { x := 6 }" in
+  let s = [("x", Constant.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Constant.State.show ["x"] s)
+    (Annotated.pp_command (Constant.State.show ["x"]) (Constant_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := Any}
+x := 42 {x := 42};
+if x < 43 {
+  {x := 42}
+  x := 5 {x := 5}
+} else {
+  {x := 42}
+  x := 6 {x := 6}
+}
+{x := Any}
+|})
+
+let test_constant_3 () =
+  let c = parse "x := 0; y := 0; z := 2; while x < 1 { x := y; y := z }" in
+  let s = [("x", Constant.Value.top); ("y", Constant.Value.top); ("z", Constant.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Constant.State.show ["x"; "y"; "z"] s)
+    (Annotated.pp_command (Constant.State.show ["x"; "y"; "z"]) (Constant_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := Any, y := Any, z := Any}
+x := 0 {x := 0, y := Any, z := Any};
+y := 0 {x := 0, y := 0, z := Any};
+z := 2 {x := 0, y := 0, z := 2};
+{x := Any, y := Any, z := 2}
+while x < 1 {
+  {x := Any, y := Any, z := 2}
+  x := y {x := Any, y := Any, z := 2};
+y := z {x := Any, y := 2, z := 2}
+}
+{x := Any, y := Any, z := 2}
+|})
+
 let () =
   test_collecting_semantics_1 ();
   test_collecting_semantics_2 ();
@@ -435,3 +577,6 @@ let () =
   test_parity_1 ();
   test_parity_2 ();
   test_lemma_13_25 ();
+  test_constant_1 ();
+  test_constant_2 ();
+  test_constant_3 ();
