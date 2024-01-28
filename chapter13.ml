@@ -216,33 +216,49 @@ module type Abstract_value = sig
   val to_string : t -> string
 end
 
-module type Abstract_state = sig
-  (* Type of abstract values *)
-  type value
-  (* Type of abstract states *)
-  type t = (name * value) list
-  val empty : t
-  val assoc : name -> t -> value
-  val assoc_opt : name -> t -> value option
-  (* <= (abstraction of subset ordering) *)
-  val order : t -> t -> bool
-  (* Least upper bound of two abstract states *)
-  val join : t -> t -> t
-  val show : name list -> t -> string
-end
-
-module type Abstract_domain = sig
-  module Value : Abstract_value
-  module State : Abstract_state with type value := Value.t
-  (* Abstract operations *)
-  val asem : name -> aexpr -> State.t -> State.t
-  val bsem : bexpr -> State.t -> State.t
-end
-
 module Vars = Set.Make (struct
   type t = name
   let compare = Stdlib.compare
 end)
+
+module Abstract_state (Value : Abstract_value) = struct
+  type t = (name * Value.t) list
+  let empty = []
+
+  let assoc (x : name) (s : t) =
+    List.assoc_opt x s
+    |> Option.value ~default:Value.bot
+
+  let assoc_opt = List.assoc_opt
+
+  let order (a : t) (b : t) : bool =
+    let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+    Vars.fold (fun x s ->
+        let av, av' = assoc x a, assoc x b in
+        (x, Value.order av av') :: s
+      ) names []
+    |> List.for_all snd
+
+  let join (a : t) (b : t) : t =
+    let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
+    Vars.fold (fun x s ->
+        let av, av' = assoc x a, assoc x b in
+        (x, Value.join av av') :: s
+      ) names []
+
+  let show (xs : name list) (s : t) : string =
+    List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> Value.to_string)) xs
+    |> String.concat ", "
+    |> Printf.sprintf "%s"
+end
+
+module type Abstract_domain = sig
+  module Value : Abstract_value
+  module State : module type of Abstract_state (Value)
+  (* Abstract operations *)
+  val asem : name -> aexpr -> State.t -> State.t
+  val bsem : bexpr -> State.t -> State.t
+end
 
 module Parity : Abstract_domain = struct
   module Value = struct
@@ -278,36 +294,7 @@ module Parity : Abstract_domain = struct
       | Either -> "Either"
   end
 
-  module State = struct
-    type t = (name * Value.t) list
-    let empty = []
-
-    let assoc (x : name) (s : t) =
-      List.assoc_opt x s
-      |> Option.value ~default:Value.bot
-
-    let assoc_opt = List.assoc_opt
-
-    let order (a : t) (b : t) : bool =
-      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-      Vars.fold (fun x s ->
-          let av, av' = assoc x a, assoc x b in
-          (x, Value.order av av') :: s
-        ) names []
-      |> List.for_all snd
-
-    let join (a : t) (b : t) : t =
-      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-      Vars.fold (fun x s ->
-          let av, av' = assoc x a, assoc x b in
-          (x, Value.join av av') :: s
-        ) names []
-
-    let show (xs : name list) (s : t) : string =
-      List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> Value.to_string)) xs
-      |> String.concat ", "
-      |> Printf.sprintf "%s"
-  end
+  module State = Abstract_state (Value)
 
   open Value
 
@@ -363,36 +350,7 @@ module Constant : Abstract_domain = struct
       | Any -> "Any"
   end
 
-  module State = struct
-    type t = (name * Value.t) list
-    let empty = []
-
-    let assoc (x : name) (s : t) =
-      List.assoc_opt x s
-      |> Option.value ~default:Value.bot
-
-    let assoc_opt = List.assoc_opt
-
-    let order (a : t) (b : t) : bool =
-      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-      Vars.fold (fun x s ->
-          let av, av' = assoc x a, assoc x b in
-          (x, Value.order av av') :: s
-        ) names []
-      |> List.for_all snd
-
-    let join (a : t) (b : t) : t =
-      let names = Vars.of_list (fst (List.split a) @ fst (List.split b)) in
-      Vars.fold (fun x s ->
-          let av, av' = assoc x a, assoc x b in
-          (x, Value.join av av') :: s
-        ) names []
-
-    let show (xs : name list) (s : t) : string =
-      List.map (fun x -> Printf.sprintf "%s := %s" x (assoc x s |> Value.to_string)) xs
-      |> String.concat ", "
-      |> Printf.sprintf "%s"
-  end
+  module State = Abstract_state (Value)
 
   open Value
 
