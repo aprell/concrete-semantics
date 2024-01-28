@@ -92,20 +92,32 @@ module Annotated = struct
 
   let pp_command' = pp_command
 
-  let rec pp_command (show : 'a -> name) = function
+  let printf ?(indent = 0) =
+    print_string (String.make indent ' ');
+    Printf.printf
+
+  let sprintf ?(indent = 0) =
+    let indent = String.make indent ' ' in
+    Printf.ksprintf (( ^ ) indent)
+
+  let rec pp_command (show : 'a -> name) ?(indent = 0) = function
     | Assign (x, e, p) ->
-      Printf.sprintf "%s {%s}"
-        (pp_command' (Assign (x, e))) (show p)
+      sprintf ~indent "%s {%s}" (pp_command' (Assign (x, e))) (show p)
     | Seq (c1, c2) ->
-      Printf.sprintf "%s;\n%s"
-        (pp_command show c1) (pp_command show c2)
+      pp_command ~indent show c1 ^ ";\n" ^ pp_command ~indent show c2
     | If (e, p1, c1, p2, c2, q) ->
-      Printf.sprintf "if %s {\n  {%s}\n  %s\n} else {\n  {%s}\n  %s\n}\n{%s}"
-        (pp_bexpr e) (show p1) (pp_command show c1) (show p2) (pp_command show c2) (show q)
+      sprintf ~indent "if %s {\n" (pp_bexpr e) ^
+      sprintf ~indent:(indent + 2) "{%s}\n" (show p1) ^
+      sprintf ~indent "%s\n" (pp_command ~indent:(indent + 2) show c1) ^
+      sprintf ~indent "} else {\n" ^
+      sprintf ~indent:(indent + 2) "{%s}\n" (show p2) ^
+      sprintf ~indent "%s\n" (pp_command ~indent:(indent + 2) show c2) ^
+      sprintf ~indent "}\n{%s}" (show q)
     | While (i, e, p, c, q) ->
-      Printf.sprintf "{%s}\nwhile %s {\n  {%s}\n  %s\n}\n{%s}"
-        (show i) (pp_bexpr e) (show p) (pp_command show c) (show q)
+      sprintf ~indent "{%s}\nwhile %s {\n" (show i) (pp_bexpr e) ^
+      sprintf ~indent:(indent + 2) "{%s}\n" (show p) ^
+      sprintf ~indent "%s\n" (pp_command ~indent:(indent + 2) show c) ^
+      sprintf ~indent "}\n{%s}" (show q)
     | Skip p ->
-      Printf.sprintf "%s\n{%s}"
-        (pp_command' Skip) (show p)
+      sprintf ~indent "%s\n{%s}" (pp_command' Skip) (show p)
 end

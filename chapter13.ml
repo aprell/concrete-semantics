@@ -564,7 +564,7 @@ z := 2 {x := 0, y := 0, z := 2};
 while x < 1 {
   {x := Any, y := Any, z := 2}
   x := y {x := Any, y := Any, z := 2};
-y := z {x := Any, y := 2, z := 2}
+  y := z {x := Any, y := 2, z := 2}
 }
 {x := Any, y := Any, z := 2}
 |})
