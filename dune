@@ -52,7 +52,7 @@
 (library
   (name imp)
   (modules ast eval type lexer parser parse examples)
-  (libraries state))
+  (libraries state utils))
 
 (tests
   (names test_parse)

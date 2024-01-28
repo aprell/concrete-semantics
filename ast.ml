@@ -1,6 +1,7 @@
 (* IMP abstract syntax *)
 
 open State
+open Utils
 
 type aexpr =
   | Int of int
@@ -91,14 +92,6 @@ module Annotated = struct
     | Skip of 'a
 
   let pp_command' = pp_command
-
-  let printf ?(indent = 0) =
-    print_string (String.make indent ' ');
-    Printf.printf
-
-  let sprintf ?(indent = 0) =
-    let indent = String.make indent ' ' in
-    Printf.ksprintf (( ^ ) indent)
 
   let rec pp_command (show : 'a -> name) ?(indent = 0) = function
     | Assign (x, e, p) ->

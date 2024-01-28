@@ -15,3 +15,14 @@ let equivalent f g xs =
 
 let rec until b f x =
   if not (b x) then until b f (f x) else x
+
+let rec while' b f x =
+  if b x then while' b f (f x) else x
+
+let printf ?(indent = 0) =
+  print_string (String.make indent ' ');
+  Printf.printf
+
+let sprintf ?(indent = 0) =
+  let indent = String.make indent ' ' in
+  Printf.ksprintf (( ^ ) indent)
