@@ -573,10 +573,11 @@ if x < 43 {
 
 let test_constant_3 () =
   let c = parse "x := 0; y := 0; z := 2; while x < 1 { x := y; y := z }" in
-  let s = [("x", Constant.Value.top); ("y", Constant.Value.top); ("z", Constant.Value.top)] in
+  let xs = ["x"; "y"; "z"] in
+  let s = List.map (fun x -> (x, Constant.Value.top)) xs in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (Constant.State.show ["x"; "y"; "z"] s)
-    (Annotated.pp_command (Constant.State.show ["x"; "y"; "z"]) (Constant_interpreter.run c s))
+    (Constant.State.show xs s)
+    (Annotated.pp_command (Constant.State.show xs) (Constant_interpreter.run c s))
   in
   assert (ai = {|
 {x := Any, y := Any, z := Any}
@@ -597,10 +598,11 @@ module Sign_interpreter = Abstract_interpreter (Sign)
 
 let test_sign () =
   let c = parse "x := 0; y := x + 1; z := x + y" in
-  let s = [("x", Sign.Value.top); ("y", Sign.Value.top); ("z", Sign.Value.top)] in
+  let xs = ["x"; "y"; "z"] in
+  let s = List.map (fun x -> (x, Sign.Value.top)) xs in
   let ai = Printf.sprintf "\n{%s}\n%s\n"
-    (Sign.State.show ["x"; "y"; "z"] s)
-    (Annotated.pp_command (Sign.State.show ["x"; "y"; "z"]) (Sign_interpreter.run c s))
+    (Sign.State.show xs s)
+    (Annotated.pp_command (Sign.State.show xs) (Sign_interpreter.run c s))
   in
   assert (ai = {|
 {x := Any, y := Any, z := Any}
