@@ -373,6 +373,71 @@ module Constant : Abstract_domain = struct
   let bsem (_e : bexpr) (s : State.t) : State.t = s
 end
 
+module Sign : Abstract_domain = struct
+  module Value = struct
+    type t = None | Neg | Zero | Pos | Any
+    let bot = None
+    let top = Any
+
+    let order a b = a = None || a = b || b = Any
+
+    let join a b =
+      match a, b with
+      | None, a
+      | a, None -> a
+      | Neg, Zero -> Neg
+      | Pos, Zero -> Pos
+      | Zero, Zero -> Zero
+      | _ when a = b -> a
+      | _ -> Any
+
+    (* Let's keep it simple here: no infinite sets *)
+    let gamma = function
+      | None -> Ints.empty
+      | Neg -> Ints.of_list (List.init 50 (fun i -> i - 50))
+      | Zero -> Ints.singleton 0
+      | Any -> Ints.of_list (List.init 100 (fun i -> i - 50 + 1))
+      | Pos -> Ints.of_list (List.init 50 (fun i -> i + 1))
+
+    let to_string = function
+      | None -> "None"
+      | Neg -> "-"
+      | Zero -> "0"
+      | Pos -> "+"
+      | Any -> "Any"
+  end
+
+  module State = Abstract_state (Value)
+
+  open Value
+
+  let rec aeval (e : aexpr) (s : State.t) : Value.t =
+    match e with
+    | Int n when n > 0 -> Pos
+    | Int n when n < 0 -> Neg
+    | Int _ (* when n = 0 *) -> Zero
+    | Var x -> State.assoc x s
+    | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
+
+  and plus a b =
+    match a, b with
+    | Neg, Neg
+    | Neg, Zero
+    | Zero, Neg -> Neg
+    | Pos, Pos
+    | Pos, Zero
+    | Zero, Pos -> Pos
+    | Zero, Zero -> Zero
+    | _ -> Any
+
+  let asem (x : name) (e : aexpr) (s : State.t) : State.t =
+    match State.assoc_opt x s with
+    | Some _ -> (x, aeval e s) :: s
+    | None -> (x, bot) :: s
+
+  let bsem (_e : bexpr) (s : State.t) : State.t = s
+end
+
 module Abstract_interpreter (Domain : Abstract_domain) = struct
   let rec step
     (s : Domain.State.t)
@@ -527,6 +592,23 @@ while x < 1 {
 {x := Any, y := Any, z := 2}
 |})
 
+(* Exercise 13.14 *)
+module Sign_interpreter = Abstract_interpreter (Sign)
+
+let test_sign () =
+  let c = parse "x := 0; y := x + 1; z := x + y" in
+  let s = [("x", Sign.Value.top); ("y", Sign.Value.top); ("z", Sign.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Sign.State.show ["x"; "y"; "z"] s)
+    (Annotated.pp_command (Sign.State.show ["x"; "y"; "z"]) (Sign_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := Any, y := Any, z := Any}
+x := 0 {x := 0, y := Any, z := Any};
+y := x + 1 {x := 0, y := +, z := Any};
+z := x + y {x := 0, y := +, z := +}
+|})
+
 let () =
   test_collecting_semantics_1 ();
   test_collecting_semantics_2 ();
@@ -538,3 +620,4 @@ let () =
   test_constant_1 ();
   test_constant_2 ();
   test_constant_3 ();
+  test_sign ();
