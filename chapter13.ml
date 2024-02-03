@@ -370,7 +370,22 @@ module Constant : Abstract_domain = struct
     | Some _ -> (x, aeval e s) :: s
     | None -> (x, bot) :: s
 
-  let bsem (_e : bexpr) (s : State.t) : State.t = s
+  (* Exercise 13.18 *)
+  let rec beval (e : bexpr) (s : State.t) : bool option =
+    match e with
+    | Bool b -> Some b
+    | Not e -> Option.bind (beval e s) (fun e -> Some (not e))
+    | And (e1, e2) -> Option.bind (beval e1 s) (function true -> beval e2 s | _ -> Some false)
+    | Less (e1, e2) ->
+      begin match aeval e1 s, aeval e2 s with
+      | Const i, Const j -> Some (i < j)
+      | _ -> None
+      end
+
+  let bsem (e : bexpr) (s : State.t) : State.t =
+    match beval e s with
+    | Some true | None -> s
+    | Some false -> State.empty
 end
 
 module Sign : Abstract_domain = struct
@@ -545,8 +560,8 @@ if x < 43 {
   {x := 42}
   x := 5 {x := 5}
 } else {
-  {x := 42}
-  x := 5 {x := 5}
+  {x := None}
+  x := 5 {x := None}
 }
 {x := 5}
 |})
@@ -565,10 +580,10 @@ if x < 43 {
   {x := 42}
   x := 5 {x := 5}
 } else {
-  {x := 42}
-  x := 6 {x := 6}
+  {x := None}
+  x := 6 {x := None}
 }
-{x := Any}
+{x := 5}
 |})
 
 let test_constant_3 () =
