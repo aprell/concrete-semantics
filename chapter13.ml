@@ -252,6 +252,8 @@ module Abstract_state (Value : Abstract_value) = struct
     |> Printf.sprintf "%s"
 end
 
+let init (a, b) = List.init (b - a + 1) (( + ) a)
+
 module type Abstract_domain = sig
   module Value : Abstract_value
   module State : module type of Abstract_state (Value)
@@ -278,7 +280,7 @@ module Parity : Abstract_domain = struct
     (* Let's keep it simple here: no infinite sets *)
     let gamma = function
       | None -> Ints.empty
-      | a -> let xs = List.init 100 (fun i -> i - 50 + 1) in
+      | a -> let xs = init (-100, 100) in
         begin match a with
         | Even -> List.filter (fun i -> i mod 2 = 0) xs
         | Odd -> List.filter (fun i -> i mod 2 <> 0) xs
@@ -342,7 +344,7 @@ module Constant : Abstract_domain = struct
     let gamma = function
       | None -> Ints.empty
       | Const i -> Ints.singleton i
-      | Any -> Ints.of_list (List.init 100 (fun i -> i - 50 + 1))
+      | Any -> Ints.of_list (init (-100, 100))
 
     let to_string = function
       | None -> "None"
@@ -409,10 +411,10 @@ module Sign : Abstract_domain = struct
     (* Let's keep it simple here: no infinite sets *)
     let gamma = function
       | None -> Ints.empty
-      | Neg -> Ints.of_list (List.init 50 (fun i -> i - 50))
+      | Neg -> Ints.of_list (init (-100, -1))
       | Zero -> Ints.singleton 0
-      | Any -> Ints.of_list (List.init 100 (fun i -> i - 50 + 1))
-      | Pos -> Ints.of_list (List.init 50 (fun i -> i + 1))
+      | Any -> Ints.of_list (init (-100, 100))
+      | Pos -> Ints.of_list (init (1, 100))
 
     let to_string = function
       | None -> "None"
