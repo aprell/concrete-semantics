@@ -455,6 +455,104 @@ module Sign : Abstract_domain = struct
   let bsem (_e : bexpr) (s : State.t) : State.t = s
 end
 
+module EInt = struct
+  type t = Neg_inf | Int of int | Pos_inf
+
+  let ( <= ) a b =
+    match a, b with
+    | Int a, Int b -> a <= b
+    | Pos_inf, Int _
+    | Int _, Neg_inf
+    | Pos_inf, Neg_inf -> false
+    | _ -> true
+
+  let min a b = if a <= b then a else b
+
+  let max a b = if a <= b then b else a
+
+  let ( + ) a b =
+    match a, b with
+    | Int a, Int b -> Int (a + b)
+    | Int _, Pos_inf
+    | Pos_inf, Int _
+    | Pos_inf, Pos_inf -> Pos_inf
+    | Int _, Neg_inf
+    | Neg_inf, Int _
+    | Neg_inf, Neg_inf -> Neg_inf
+    | _ -> invalid_arg "( + )"
+
+  let to_string = function
+    | Neg_inf -> "-∞"
+    | Int i -> string_of_int i
+    | Pos_inf -> "∞"
+end
+
+module Interval : Abstract_domain = struct
+  module Value = struct
+    type t = None | Bounded of EInt.t * EInt.t | Unbounded
+    let bot = None
+    let top = Unbounded
+
+    open EInt
+
+    let interval (a, b) = Bounded (Int a, Int b)
+
+    let order a b =
+      match a, b with
+      | None, _ | _, Unbounded -> true
+      | Bounded (a1, b1), Bounded (a2, b2) -> a2 <= a1 && b1 <= b2
+      | _ -> false
+
+    let join a b =
+      match a, b with
+      | None, a
+      | a, None -> a
+      | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (min a1 a2, max b1 b2)
+      | _ -> Unbounded
+
+    (* Let's keep it simple here: no infinite sets *)
+    let gamma = function
+      | None -> Ints.empty
+      | Bounded (Int a, Int b) -> Ints.of_list (init (a, b))
+      | Bounded (Int a, Pos_inf) -> Ints.of_list (init (a, 100))
+      | Bounded (Neg_inf, Int a) -> Ints.of_list (init (-100, a))
+      | Bounded (Neg_inf, Pos_inf)
+      | Unbounded -> Ints.of_list (init (-100, 100))
+      | _ -> invalid_arg "gamma"
+
+    let to_string = function
+      | None -> "None"
+      | Bounded (a, b) -> "[" ^ to_string a ^ ", " ^ to_string b ^ "]"
+      | Unbounded -> "[-∞, ∞]"
+  end
+
+  module State = Abstract_state (Value)
+
+  open Value
+
+  let rec aeval (e : aexpr) (s : State.t) : Value.t =
+    match e with
+    | Int n -> interval (n, n)
+    | Var x -> State.assoc x s
+    | Add (e1, e2) -> plus (aeval e1 s) (aeval e2 s)
+
+  and plus a b =
+    let open EInt in
+    match a, b with
+    | None, _
+    | _, None -> None
+    | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (a1 + a2, b1 + b2)
+    | _ -> Unbounded
+
+  let asem (x : name) (e : aexpr) (s : State.t) : State.t =
+    match State.assoc_opt x s with
+    | Some _ -> (x, aeval e s) :: s
+    | None -> (x, bot) :: s
+
+  (* TODO: Interpret boolean expressions *)
+  let bsem (_e : bexpr) (s : State.t) : State.t = s
+end
+
 module Abstract_interpreter (Domain : Abstract_domain) = struct
   let rec step
     (s : Domain.State.t)
@@ -628,6 +726,66 @@ y := x + 1 {x := 0, y := +, z := Any};
 z := x + y {x := 0, y := +, z := +}
 |})
 
+module Interval_interpreter = Abstract_interpreter (Interval)
+
+let test_interval_1 () =
+  let c = parse "x := 42; if x < 43 { x := 5 } else { x := 6 }" in
+  let s = [("x", Interval.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Interval.State.show ["x"] s)
+    (Annotated.pp_command (Interval.State.show ["x"]) (Interval_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := [-∞, ∞]}
+x := 42 {x := [42, 42]};
+if x < 43 {
+  {x := [42, 42]}
+  x := 5 {x := [5, 5]}
+} else {
+  {x := [42, 42]}
+  x := 6 {x := [6, 6]}
+}
+{x := [5, 6]}
+|})
+
+let test_interval_2 () =
+  let c = parse "y := 7; if x < y { y := x + y } else { x := x + y }" in
+  let xs = ["x"; "y"] in
+  let s = List.map (fun x -> (x, Interval.Value.top)) xs in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Interval.State.show xs s)
+    (Annotated.pp_command (Interval.State.show xs) (Interval_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := [-∞, ∞], y := [-∞, ∞]}
+y := 7 {x := [-∞, ∞], y := [7, 7]};
+if x < y {
+  {x := [-∞, ∞], y := [7, 7]}
+  y := x + y {x := [-∞, ∞], y := [-∞, ∞]}
+} else {
+  {x := [-∞, ∞], y := [7, 7]}
+  x := x + y {x := [-∞, ∞], y := [7, 7]}
+}
+{x := [-∞, ∞], y := [-∞, ∞]}
+|})
+
+let test_interval_3 () =
+  let c = parse "while x < 100 { x := x + 1 }" in
+  let s = [("x", Interval.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Interval.State.show ["x"] s)
+    (Annotated.pp_command (Interval.State.show ["x"]) (Interval_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := [-∞, ∞]}
+{x := [-∞, ∞]}
+while x < 100 {
+  {x := [-∞, ∞]}
+  x := x + 1 {x := [-∞, ∞]}
+}
+{x := [-∞, ∞]}
+|})
+
 let () =
   test_collecting_semantics_1 ();
   test_collecting_semantics_2 ();
@@ -640,3 +798,6 @@ let () =
   test_constant_2 ();
   test_constant_3 ();
   test_sign ();
+  test_interval_1 ();
+  test_interval_2 ();
+  test_interval_3 ();
