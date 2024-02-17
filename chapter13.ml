@@ -549,8 +549,22 @@ module Interval : Abstract_domain = struct
     | Some _ -> (x, aeval e s) :: s
     | None -> (x, bot) :: s
 
-  (* TODO: Interpret boolean expressions *)
-  let bsem (_e : bexpr) (s : State.t) : State.t = s
+  let rec beval (e : bexpr) (s : State.t) : bool option =
+    match e with
+    | Bool b -> Some b
+    | Not e -> Option.bind (beval e s) (fun e -> Some (not e))
+    | And (e1, e2) -> Option.bind (beval e1 s) (function true -> beval e2 s | _ -> Some false)
+    | Less (e1, e2) ->
+      begin match aeval e1 s, aeval e2 s with
+      | Bounded (Int a1, Int b1), Bounded (Int a2, _) -> Some (a1 < a2 && b1 < a2)
+      | Bounded (Neg_inf, Int b1), Bounded (Int a2, _) -> Some (b1 < a2)
+      | _ -> None
+      end
+
+  let bsem (e : bexpr) (s : State.t) : State.t =
+    match beval e s with
+    | Some true | None -> s
+    | Some false -> State.empty
 end
 
 module Abstract_interpreter (Domain : Abstract_domain) = struct
@@ -742,10 +756,10 @@ if x < 43 {
   {x := [42, 42]}
   x := 5 {x := [5, 5]}
 } else {
-  {x := [42, 42]}
-  x := 6 {x := [6, 6]}
+  {x := None}
+  x := 6 {x := None}
 }
-{x := [5, 6]}
+{x := [5, 5]}
 |})
 
 let test_interval_2 () =
