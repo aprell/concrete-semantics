@@ -1,11 +1,11 @@
-CHAPTERS := 2 3 7 8 9 10 13
+CHAPTERS := $(sort $(wildcard chapter*.ml))
 
 default: test-chapters
 
 all test-all: test-chapters test-parse
 
 test-chapters:
-	@./test.sh $(CHAPTERS)
+	@./test.sh $(CHAPTERS:.ml=.exe)
 
 test-parse:
 	dune exec ./test_parse.exe
