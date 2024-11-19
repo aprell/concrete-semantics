@@ -489,9 +489,9 @@ end
 
 module Interval : Abstract_domain = struct
   module Value = struct
-    type t = None | Bounded of EInt.t * EInt.t | Unbounded
+    type t = None | Bounded of EInt.t * EInt.t
     let bot = None
-    let top = Unbounded
+    let top = Bounded (EInt.Neg_inf, EInt.Pos_inf)
 
     open EInt
 
@@ -499,7 +499,7 @@ module Interval : Abstract_domain = struct
 
     let order a b =
       match a, b with
-      | None, _ | _, Unbounded -> true
+      | None, _ -> true
       | Bounded (a1, b1), Bounded (a2, b2) -> a2 <= a1 && b1 <= b2
       | _ -> false
 
@@ -508,7 +508,6 @@ module Interval : Abstract_domain = struct
       | None, a
       | a, None -> a
       | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (min a1 a2, max b1 b2)
-      | _ -> Unbounded
 
     (* Let's keep it simple here: no infinite sets *)
     let gamma = function
@@ -516,14 +515,12 @@ module Interval : Abstract_domain = struct
       | Bounded (Int a, Int b) -> Ints.of_list (init (a, b))
       | Bounded (Int a, Pos_inf) -> Ints.of_list (init (a, 100))
       | Bounded (Neg_inf, Int a) -> Ints.of_list (init (-100, a))
-      | Bounded (Neg_inf, Pos_inf)
-      | Unbounded -> Ints.of_list (init (-100, 100))
+      | Bounded (Neg_inf, Pos_inf) -> Ints.of_list (init (-100, 100))
       | _ -> invalid_arg "gamma"
 
     let to_string = function
       | None -> "None"
       | Bounded (a, b) -> "[" ^ to_string a ^ ", " ^ to_string b ^ "]"
-      | Unbounded -> "[-∞, ∞]"
   end
 
   module State = Abstract_state (Value)
@@ -542,7 +539,6 @@ module Interval : Abstract_domain = struct
     | None, _
     | _, None -> None
     | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (a1 + a2, b1 + b2)
-    | _ -> Unbounded
 
   let asem (x : name) (e : aexpr) (s : State.t) : State.t =
     match State.assoc_opt x s with
