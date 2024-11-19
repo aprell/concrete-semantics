@@ -481,6 +481,11 @@ module EInt = struct
     | Neg_inf, Neg_inf -> Neg_inf
     | _ -> invalid_arg "( + )"
 
+  let gamma = function
+    | Neg_inf -> -100
+    | Int i -> i
+    | Pos_inf -> 100
+
   let to_string = function
     | Neg_inf -> "-∞"
     | Int i -> string_of_int i
@@ -511,12 +516,8 @@ module Interval : Abstract_domain = struct
 
     (* Let's keep it simple here: no infinite sets *)
     let gamma = function
-      | None -> Ints.empty
-      | Bounded (Int a, Int b) -> Ints.of_list (init (a, b))
-      | Bounded (Int a, Pos_inf) -> Ints.of_list (init (a, 100))
-      | Bounded (Neg_inf, Int a) -> Ints.of_list (init (-100, a))
-      | Bounded (Neg_inf, Pos_inf) -> Ints.of_list (init (-100, 100))
-      | _ -> invalid_arg "gamma"
+      | Bounded (a, b) when a <= b -> Ints.of_list (init (gamma a, gamma b))
+      | _ -> Ints.empty
 
     let to_string = function
       | None -> "None"
