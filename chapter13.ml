@@ -209,7 +209,7 @@ module type Abstract_value = sig
   val top : t
   (* <= (abstraction of subset ordering) *)
   val order : t -> t -> bool
-  (* Least upper bound of two abstract values *)
+  (* Least upper bound of two abstract values (supremum) *)
   val join : t -> t -> t
   (* Concretization function *)
   val gamma : t -> Ints.t
@@ -481,6 +481,11 @@ module EInt = struct
     | Neg_inf, Neg_inf -> Neg_inf
     | _ -> invalid_arg "( + )"
 
+  let ( ~- ) = function
+    | Neg_inf -> Pos_inf
+    | Int i -> Int (-i)
+    | Pos_inf -> Neg_inf
+
   let gamma = function
     | Neg_inf -> -100
     | Int i -> i
@@ -505,14 +510,21 @@ module Interval : Abstract_domain = struct
     let order a b =
       match a, b with
       | None, _ -> true
+      | _, None -> false
       | Bounded (a1, b1), Bounded (a2, b2) -> a2 <= a1 && b1 <= b2
-      | _ -> false
 
     let join a b =
       match a, b with
       | None, a
       | a, None -> a
       | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (min a1 a2, max b1 b2)
+
+    (* Greatest lower bound of two intervals (infimum) *)
+    let meet a b =
+      match a, b with
+      | None, _
+      | _, None -> None
+      | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (max a1 a2, min b1 b2)
 
     (* Let's keep it simple here: no infinite sets *)
     let gamma = function
@@ -541,6 +553,37 @@ module Interval : Abstract_domain = struct
     | _, None -> None
     | Bounded (a1, b1), Bounded (a2, b2) -> Bounded (a1 + a2, b1 + b2)
 
+  let ( ~- ) a =
+    let open EInt in
+    match a with
+    | None -> None
+    | Bounded (a, b) -> Bounded (-b, -a)
+
+  let minus a b = plus a (-b)
+
+  let rec inv_aeval (e : aexpr) (v : Value.t) (s : State.t option) : State.t option =
+    match e with
+    | Int n ->
+      begin match v with
+      | Bounded (Int a, Int b) when a <= n && n <= b -> s
+      | _ -> None
+      end
+    | Var x ->
+      begin match s with
+      | Some s ->
+        let v' = meet (State.assoc x s) v in
+        if v' = None then None else Some ((x, v') :: s)
+      | None -> None
+      end
+    | Add (e1, e2) ->
+      let v1, v2 = inv_plus v (aeval' e1 s) (aeval' e2 s) in
+      inv_aeval e1 v1 (inv_aeval e2 v2 s)
+
+  and inv_plus v a b = (meet a (minus v b), meet b (minus v a))
+
+  and aeval' (e : aexpr) (s : State.t option) : Value.t =
+    Option.fold s ~some:(aeval e) ~none:None
+
   let asem (x : name) (e : aexpr) (s : State.t) : State.t =
     match State.assoc_opt x s with
     | Some _ -> (x, aeval e s) :: s
@@ -558,10 +601,43 @@ module Interval : Abstract_domain = struct
       | _ -> None
       end
 
-  let bsem (e : bexpr) (s : State.t) : State.t =
+   let rec inv_beval (e : bexpr) (v : bool) (s : State.t option) : State.t option =
+    match e with
+    | Bool b -> if b = v then s else None
+    | Not e -> inv_beval e (not v) s
+    | And (e1, e2) ->
+      begin match v with
+      | true -> inv_beval e1 true (inv_beval e2 false s)
+      | false -> begin match (inv_beval e1 false s), (inv_beval e2 false s) with
+        | Some s, Some t -> Some (State.join s t)
+        | s, None | None, s -> s
+        end
+      end
+    | Less (e1, e2) ->
+      let v1, v2 = inv_less v (aeval' e1 s) (aeval' e2 s) in
+      inv_aeval e1 v1 (inv_aeval e2 v2 s)
+
+  and inv_less v a b =
+    if v then meet a (minus (below b) (interval (1, 1))), meet b (plus (above a) (interval (1, 1)))
+    else meet a (above b), meet b (below a)
+
+  and above = function
+    | None -> None
+    | Bounded (a, _) -> Bounded (a, Pos_inf)
+
+  and below = function
+    | None -> None
+    | Bounded (_, b) -> Bounded (Neg_inf, b)
+
+  let _bsem (e : bexpr) (s : State.t) : State.t =
     match beval e s with
     | Some true | None -> s
     | Some false -> State.empty
+
+  let bsem (e : bexpr) (s : State.t) : State.t =
+    match inv_beval e true (Some s) with
+    | Some s -> s
+    | None -> State.empty
 end
 
 module Abstract_interpreter (Domain : Abstract_domain) = struct
@@ -771,13 +847,13 @@ let test_interval_2 () =
 {x := [-∞, ∞], y := [-∞, ∞]}
 y := 7 {x := [-∞, ∞], y := [7, 7]};
 if x < y {
-  {x := [-∞, ∞], y := [7, 7]}
-  y := x + y {x := [-∞, ∞], y := [-∞, ∞]}
+  {x := [-∞, 6], y := [7, 7]}
+  y := x + y {x := [-∞, 6], y := [-∞, 13]}
 } else {
-  {x := [-∞, ∞], y := [7, 7]}
-  x := x + y {x := [-∞, ∞], y := [7, 7]}
+  {x := [7, ∞], y := [7, 7]}
+  x := x + y {x := [14, ∞], y := [7, 7]}
 }
-{x := [-∞, ∞], y := [-∞, ∞]}
+{x := [-∞, ∞], y := [-∞, 13]}
 |})
 
 let test_interval_3 () =
@@ -791,10 +867,10 @@ let test_interval_3 () =
 {x := [-∞, ∞]}
 {x := [-∞, ∞]}
 while x < 100 {
-  {x := [-∞, ∞]}
-  x := x + 1 {x := [-∞, ∞]}
+  {x := [-∞, 99]}
+  x := x + 1 {x := [-∞, 100]}
 }
-{x := [-∞, ∞]}
+{x := [100, ∞]}
 |})
 
 let () =
