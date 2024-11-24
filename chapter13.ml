@@ -618,8 +618,8 @@ module Interval : Abstract_domain = struct
       inv_aeval e1 v1 (inv_aeval e2 v2 s)
 
   and inv_less v a b =
-    if v then meet a (minus (below b) (interval (1, 1))), meet b (plus (above a) (interval (1, 1)))
-    else meet a (above b), meet b (below a)
+    if v then (meet a (minus (below b) (interval (1, 1))), meet b (plus (above a) (interval (1, 1))))
+    else (meet a (above b), meet b (below a))
 
   and above = function
     | None -> None
@@ -873,6 +873,27 @@ while x < 100 {
 {x := [100, ∞]}
 |})
 
+(* Analysis takes O(n) steps (if n >= 0)
+   "We might as well run the program directly (which this analysis more or less does)."
+   -> a case for widening to accelerate termination *)
+let test_interval_4 () =
+  let c = parse "x := 0; while x < 100 { x := x + 1 }" in
+  let s = [("x", Interval.Value.top)] in
+  let ai = Printf.sprintf "\n{%s}\n%s\n"
+    (Interval.State.show ["x"] s)
+    (Annotated.pp_command (Interval.State.show ["x"]) (Interval_interpreter.run c s))
+  in
+  assert (ai = {|
+{x := [-∞, ∞]}
+x := 0 {x := [0, 0]};
+{x := [0, 100]}
+while x < 100 {
+  {x := [0, 99]}
+  x := x + 1 {x := [1, 100]}
+}
+{x := [100, 100]}
+|})
+
 let () =
   test_collecting_semantics_1 ();
   test_collecting_semantics_2 ();
@@ -888,3 +909,4 @@ let () =
   test_interval_1 ();
   test_interval_2 ();
   test_interval_3 ();
+  test_interval_4 ();
